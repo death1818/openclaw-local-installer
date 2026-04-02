@@ -72,16 +72,16 @@ function validateLicenseCode(code) {
  */
 function generateSign(params, apiKey) {
   const sortedParams = Object.keys(params)
-    .filter(key => params[key] !== '' && params[key] !== undefined)
+    .filter(key => params[key] !== '' && params[key] !== undefined && key !== 'sign')
     .sort()
     .map(key => `${key}=${params[key]}`)
     .join('&')
   
-  return crypto
-    .createHmac('sha256', apiKey)
-    .update(sortedParams + '&key=' + apiKey)
-    .digest('hex')
-    .toUpperCase()
+  const signStr = sortedParams + '&key=' + apiKey
+  
+  // 使用 MD5 签名
+  const crypto = require('crypto')
+  return crypto.createHash('md5').update(signStr, 'utf8').digest('hex').toUpperCase()
 }
 
 /**
