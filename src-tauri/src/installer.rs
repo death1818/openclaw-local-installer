@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::process::Command;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 

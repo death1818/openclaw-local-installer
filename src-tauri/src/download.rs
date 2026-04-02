@@ -1,6 +1,6 @@
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 /// 下载模型并报告进度
 pub async fn pull_model_with_progress(
