@@ -86,8 +86,8 @@ function App() {
   const [models, setModels] = useState<ModelRecommendation[]>([])
   const [selectedModel, setSelectedModel] = useState<string>('')
   const [installLog, setInstallLog] = useState<string[]>([])
-  const [ollamaInstalled, setOllamaInstalled] = useState(false)
-  const [openclawInstalled, setOpenclawInstalled] = useState(false)
+  const [_ollamaInstalled, setOllamaInstalled] = useState(false)
+  const [_openclawInstalled, setOpenclawInstalled] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null)
   const [downloadStatus, setDownloadStatus] = useState<'idle' | 'downloading' | 'completed' | 'failed'>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -132,15 +132,6 @@ function App() {
       setStep('detecting')
     } else {
       setLicenseError('授权码无效，请检查后重试')
-    }
-  }
-
-  // 跳过付款（已授权）
-  const handleSkipPayment = () => {
-    if (isLicensed) {
-      setStep('detecting')
-    } else {
-      setShowPayment(true)
     }
   }
 
