@@ -82,6 +82,13 @@ function App() {
   const [licenseError, setLicenseError] = useState('')
   const [showPayment, setShowPayment] = useState(false)
   
+  // 如果已授权，自动跳转到检测
+  useEffect(() => {
+    if (isLicensed && step === 'welcome') {
+      // 可选：自动跳过授权步骤
+    }
+  }, [isLicensed, step])
+  
   const [hardware, setHardware] = useState<HardwareInfo | null>(null)
   const [models, setModels] = useState<ModelRecommendation[]>([])
   const [selectedModel, setSelectedModel] = useState<string>('')
