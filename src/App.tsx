@@ -133,14 +133,43 @@ function App() {
   }, [])
 
   // 授权码验证
-  const handleLicenseSubmit = () => {
-    if (validateLicenseCode(licenseCode.toUpperCase())) {
-      setIsLicensed(true)
-      localStorage.setItem('openclaw_licensed', 'true')
-      setLicenseError('')
-      setStep('detecting')
-    } else {
-      setLicenseError('授权码无效，请检查后重试')
+  const handleLicenseSubmit = async () => {
+    const code = licenseCode.toUpperCase()
+    
+    if (!validateLicenseCode(code)) {
+      setLicenseError('授权码格式无效')
+      return
+    }
+    
+    try {
+      // 调用线上API验证授权码
+      const response = await fetch('http://101.42.93.40:61616/api/validate-license', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code })
+      })
+      
+      const data = await response.json()
+      
+      if (data.valid) {
+        setIsLicensed(true)
+        localStorage.setItem('openclaw_licensed', 'true')
+        localStorage.setItem('openclaw_license_code', code)
+        setLicenseError('')
+        setStep('detecting')
+      } else {
+        setLicenseError(data.message || '授权码无效或已被使用')
+      }
+    } catch (err) {
+      // 离线验证（备用）
+      if (validateLicenseCode(code)) {
+        setIsLicensed(true)
+        localStorage.setItem('openclaw_licensed', 'true')
+        setLicenseError('')
+        setStep('detecting')
+      } else {
+        setLicenseError('网络错误，无法验证授权码')
+      }
     }
   }
 
