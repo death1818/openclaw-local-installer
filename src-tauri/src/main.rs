@@ -5,7 +5,6 @@ mod hardware;
 mod installer;
 mod models;
 mod download;
-mod updater;
 
 use tauri::Manager;
 
@@ -97,26 +96,9 @@ async fn check_model_running(model_name: String) -> Result<bool, String> {
     models::is_model_running(model_name).await
 }
 
-// 更新相关命令
-#[tauri::command]
-async fn check_for_updates() -> Result<Option<updater::UpdateInfo>, String> {
-    updater::check_update().await
-}
-
-#[tauri::command]
-async fn download_update(app: tauri::AppHandle) -> Result<(), String> {
-    updater::download_update(app).await
-}
-
-#[tauri::command]
-async fn install_update() -> Result<(), String> {
-    updater::install_update().await
-}
-
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             detect_hardware,
             get_recommended_models,
@@ -132,9 +114,6 @@ fn main() {
             delete_model,
             stop_running_model,
             check_model_running,
-            check_for_updates,
-            download_update,
-            install_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

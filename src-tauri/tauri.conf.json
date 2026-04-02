@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "OpenClaw本地版",
+  "productName": "OpenClaw Local Installer",
   "version": "0.2.0",
   "identifier": "com.openclaw.local-installer",
   "build": {
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "OpenClaw 本地版安装器",
+        "title": "OpenClaw Local Installer",
         "width": 900,
         "height": 700,
         "resizable": true,
@@ -29,30 +29,14 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["msi", "nsis"],
+    "targets": "all",
     "icon": [
       "icons/128x128.png",
-      "icons/icon.ico"
+      "icons/icon.ico",
+      "icons/icon.icns"
     ],
-    "windows": {
-      "nsis": {
-        "installerIcon": "icons/icon.ico",
-        "installMode": "currentUser",
-        "languages": ["SimpChinese", "English"],
-        "displayLanguageSelector": true
-      }
-    },
-    "shortDescription": "OpenClaw 本地版安装器",
-    "longDescription": "零 API 费用、完全本地化、自动硬件检测与模型推荐的 OpenClaw 安装器",
+    "shortDescription": "OpenClaw Local Installer",
+    "longDescription": "Zero API fees, fully local, automatic hardware detection and model recommendation for OpenClaw",
     "category": "DeveloperTool"
-  },
-  "plugins": {
-    "updater": {
-      "active": true,
-      "endpoints": [
-        "https://github.com/your-repo/openclaw-local-installer/releases/latest/download/{{target}}-{{arch}}.json"
-      ],
-      "pubkey": ""
-    }
   }
 }

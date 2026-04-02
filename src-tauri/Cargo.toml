@@ -1,17 +1,16 @@
 [package]
 name = "openclaw-local-installer"
-version = "0.1.0"
+version = "0.2.0"
 description = "OpenClaw 本地版安装器 - 自动检测硬件并配置本地模型"
 authors = ["OpenClaw Community"]
 edition = "2021"
 
 [build-dependencies]
-tauri-build = { version = "2.0", features = [] }
+tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2.0", features = ["shell-open", "updater"] }
-tauri-plugin-shell = "2.0"
-tauri-plugin-updater = "2.0"
+tauri = { version = "2", features = ["shell-open"] }
+tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sysinfo = "0.33"
@@ -24,13 +23,7 @@ anyhow = "1"
 zip = "2"
 
 [target.'cfg(windows)'.dependencies]
-wmi = "0.14"
 winapi = { version = "0.3", features = ["winuser", "sysinfoapi"] }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-core-foundation = "0.10"
-core-graphics = "0.24"
-metal = "0.30"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
