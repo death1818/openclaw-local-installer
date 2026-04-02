@@ -1,7 +1,7 @@
 [package]
 name = "openclaw-local-installer"
 version = "0.2.0"
-description = "OpenClaw 本地版安装器 - 自动检测硬件并配置本地模型"
+description = "OpenClaw Local Installer"
 authors = ["OpenClaw Community"]
 edition = "2021"
 
@@ -9,7 +9,7 @@ edition = "2021"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["shell-open"] }
+tauri = { version = "2", features = ["devtools"] }
 tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
