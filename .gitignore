@@ -4,7 +4,6 @@ dist/
 
 # Rust
 target/
-Cargo.lock
 
 # IDE
 .vscode/
@@ -28,4 +27,3 @@ npm-debug.log*
 # 临时文件
 *.tmp
 .env.local
-src-tauri/Cargo.lock
