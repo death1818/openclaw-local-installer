@@ -1,0 +1,30 @@
+# 依赖
+node_modules/
+dist/
+
+# Rust
+target/
+Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Tauri
+src-tauri/target/
+src-tauri/WixTools/
+
+# 日志
+*.log
+npm-debug.log*
+
+# 临时文件
+*.tmp
+.env.local
