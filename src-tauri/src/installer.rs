@@ -165,7 +165,7 @@ pub async fn install_ollama(app: tauri::AppHandle) -> Result<(), Box<dyn std::er
         let installer_path = temp_dir.join("OllamaSetup.exe");
         
         // 发送进度事件
-        app.emit("install-progress", "正在下载 Ollama...")?;
+        let _ = app.emit("install-progress", "正在下载 Ollama...");
         
         // 使用 PowerShell 下载
         let ps_output = Command::new("powershell")
@@ -179,7 +179,7 @@ pub async fn install_ollama(app: tauri::AppHandle) -> Result<(), Box<dyn std::er
             return Err("下载 Ollama 失败".into());
         }
         
-        app.emit("install-progress", "正在安装 Ollama...")?;
+        let _ = app.emit("install-progress", "正在安装 Ollama...");
         
         // 运行安装程序
         let install_output = Command::new(&installer_path)
@@ -193,12 +193,14 @@ pub async fn install_ollama(app: tauri::AppHandle) -> Result<(), Box<dyn std::er
         // 清理安装程序
         let _ = std::fs::remove_file(&installer_path);
         
-        app.emit("install-progress", "Ollama 安装完成")?;
+        let _ = app.emit("install-progress", "Ollama 安装完成");
     }
     
     #[cfg(not(target_os = "windows"))]
     {
         // Linux/macOS 使用官方脚本
+        let _ = app.emit("install-progress", "正在安装 Ollama...");
+        
         let output = Command::new("sh")
             .arg("-c")
             .arg("curl -fsSL https://ollama.com/install.sh | sh")
@@ -220,7 +222,7 @@ pub async fn pull_model(
     use std::io::{BufRead, BufReader};
     use std::process::{Command, Stdio};
     
-    app.emit("model-progress", format!("正在下载模型: {}", model_name))?;
+    let _ = app.emit("model-progress", format!("正在下载模型: {}", model_name));
     
     let mut child = Command::new("ollama")
         .args(&["pull", &model_name])
@@ -233,7 +235,7 @@ pub async fn pull_model(
     
     for line in reader.lines() {
         if let Ok(line) = line {
-            app.emit("model-progress", line)?;
+            let _ = app.emit("model-progress", line);
         }
     }
     
@@ -243,7 +245,7 @@ pub async fn pull_model(
         return Err("下载模型失败".into());
     }
     
-    app.emit("model-progress", "模型下载完成".to_string())?;
+    let _ = app.emit("model-progress", "模型下载完成".to_string());
     
     Ok(())
 }
@@ -259,7 +261,7 @@ pub async fn check_openclaw_installed() -> Result<bool, Box<dyn std::error::Erro
 
 // 安装 OpenClaw
 pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    app.emit("install-progress", "正在安装 OpenClaw...")?;
+    let _ = app.emit("install-progress", "正在安装 OpenClaw...");
     
     #[cfg(target_os = "windows")]
     {
@@ -268,7 +270,7 @@ pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), Box<dyn std::
         
         if node_check.map(|o| !o.status.success()).unwrap_or(true) {
             // 需要先安装 Node.js
-            app.emit("install-progress", "正在安装 Node.js...")?;
+            let _ = app.emit("install-progress", "正在安装 Node.js...");
             
             let node_url = "https://nodejs.org/dist/v22.11.0/node-v22.11.0-x64.msi";
             let temp_dir = std::env::temp_dir();
@@ -297,7 +299,7 @@ pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), Box<dyn std::
         }
         
         // 安装 OpenClaw
-        app.emit("install-progress", "正在通过 npm 安装 OpenClaw...")?;
+        let _ = app.emit("install-progress", "正在通过 npm 安装 OpenClaw...");
         
         let npm_output = Command::new("npm")
             .args(&["install", "-g", "openclaw@latest"])
@@ -321,7 +323,7 @@ pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), Box<dyn std::
         }
     }
     
-    app.emit("install-progress", "OpenClaw 安装完成".to_string())?;
+    let _ = app.emit("install-progress", "OpenClaw 安装完成".to_string());
     
     Ok(())
 }
