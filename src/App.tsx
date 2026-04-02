@@ -352,7 +352,7 @@ function App() {
 
         {/* Progress Steps */}
         <div className="flex items-center justify-center mb-8">
-          {['欢迎', '检测', '选择模型', '安装', '完成'].map((label, idx) => {
+          {['欢迎', '检测', '选择模型', '安装', '完成'].map((_, idx) => {
             const steps: InstallStep[] = ['welcome', 'detecting', 'select-model', 'installing', 'complete']
             const currentIdx = steps.indexOf(step)
             const isActive = idx === currentIdx
