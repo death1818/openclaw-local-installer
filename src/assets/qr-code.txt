@@ -1,0 +1,1 @@
+请将真实的微信收款码图片保存为 src/assets/payment-qr.png

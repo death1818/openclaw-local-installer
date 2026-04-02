@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import qrCodeImage from './assets/payment-qr.png'
+// 提示：请将真实的微信收款码图片替换 src/assets/payment-qr.png
 
 interface GpuInfo {
   name: string
@@ -331,17 +333,17 @@ function App() {
         <div className="text-center">
           <div className="bg-white dark:bg-gray-700 rounded-lg p-6 mb-6 shadow-lg">
             <h3 className="text-lg font-bold mb-4">微信扫码支付</h3>
-            <div className="w-48 h-48 mx-auto bg-gray-100 rounded-lg flex items-center justify-center mb-4">
-              {/* 微信收款码占位符 - 实际使用时替换为真实二维码 */}
-              <div className="text-center">
-                <svg className="w-32 h-32 text-gray-400 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-                </svg>
-                <p className="text-sm text-gray-500 mt-2">微信扫码支付 ¥66.66</p>
-              </div>
+            <div className="w-48 h-48 mx-auto bg-white rounded-lg flex items-center justify-center mb-4 border-2 border-gray-200 overflow-hidden">
+              {/* 微信收款码 */}
+              <img 
+                src={qrCodeImage} 
+                alt="微信支付二维码" 
+                className="w-full h-full object-cover"
+              />
             </div>
+            <p className="text-lg font-bold text-blue-600 mb-2">¥66.66</p>
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              支付完成后，请联系客服获取授权码
+              支付完成后，输入授权码继续
             </p>
           </div>
           
