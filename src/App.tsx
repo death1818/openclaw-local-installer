@@ -41,14 +41,6 @@ interface ModelDetails {
   quantization_level: string
 }
 
-interface UpdateInfo {
-  version: string
-  release_date: string
-  release_notes: string
-  download_url: string
-  file_size: number
-}
-
 interface DownloadProgress {
   phase: string
   current: number
@@ -56,8 +48,24 @@ interface DownloadProgress {
   percent: number
 }
 
-type InstallStep = 'welcome' | 'detecting' | 'select-model' | 'installing' | 'complete' | 'model-management'
+type InstallStep = 'welcome' | 'license' | 'detecting' | 'select-model' | 'installing' | 'complete' | 'model-management'
 type Theme = 'light' | 'dark'
+
+// 授权码验证（简单的哈希校验）
+function validateLicenseCode(code: string): boolean {
+  // 授权码格式: OPENCLAW-XXXX-XXXX-XXXX
+  const pattern = /^OPENCLAW-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/
+  if (!pattern.test(code)) return false
+  
+  // 简单校验和验证
+  const parts = code.replace('OPENCLAW-', '').split('-')
+  const checksum = parts.join('')
+  let sum = 0
+  for (let i = 0; i < checksum.length; i++) {
+    sum += checksum.charCodeAt(i)
+  }
+  return sum % 97 === 0 || sum % 89 === 0 || sum % 73 === 0
+}
 
 function App() {
   const [step, setStep] = useState<InstallStep>('welcome')
@@ -65,32 +73,34 @@ function App() {
     const saved = localStorage.getItem('theme')
     return (saved as Theme) || 'light'
   })
+  
+  // 授权相关状态
+  const [isLicensed, setIsLicensed] = useState<boolean>(() => {
+    return localStorage.getItem('openclaw_licensed') === 'true'
+  })
+  const [licenseCode, setLicenseCode] = useState('')
+  const [licenseError, setLicenseError] = useState('')
+  const [showPayment, setShowPayment] = useState(false)
+  
   const [hardware, setHardware] = useState<HardwareInfo | null>(null)
   const [models, setModels] = useState<ModelRecommendation[]>([])
   const [selectedModel, setSelectedModel] = useState<string>('')
   const [installLog, setInstallLog] = useState<string[]>([])
   const [ollamaInstalled, setOllamaInstalled] = useState(false)
   const [openclawInstalled, setOpenclawInstalled] = useState(false)
-  
-  // 新增状态
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null)
   const [downloadStatus, setDownloadStatus] = useState<'idle' | 'downloading' | 'completed' | 'failed'>('idle')
   const [error, setError] = useState<string | null>(null)
   const [installedModels, setInstalledModels] = useState<InstalledModel[]>([])
   const [selectedInstalledModel, setSelectedInstalledModel] = useState<string | null>(null)
   const [modelDetails, setModelDetails] = useState<ModelDetails | null>(null)
-  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
-  const [updateDownloadProgress, setUpdateDownloadProgress] = useState<number>(0)
-  const [showUpdateDialog, setShowUpdateDialog] = useState(false)
 
   useEffect(() => {
-    // 应用主题
     document.documentElement.classList.toggle('dark', theme === 'dark')
     localStorage.setItem('theme', theme)
   }, [theme])
 
   useEffect(() => {
-    // 监听所有事件
     const listeners = [
       listen<string>('install-progress', (event) => {
         setInstallLog(prev => [...prev, event.payload])
@@ -98,627 +108,528 @@ function App() {
       listen<string>('model-download-log', (event) => {
         setInstallLog(prev => [...prev, event.payload])
       }),
+      listen<string>('model-download-status', (event) => {
+        setDownloadStatus(event.payload as 'idle' | 'downloading' | 'completed' | 'failed')
+      }),
       listen<DownloadProgress>('model-download-progress', (event) => {
         setDownloadProgress(event.payload)
-      }),
-      listen<string>('model-download-status', (event) => {
-        const status = event.payload
-        setDownloadStatus(status as any)
-        if (status === 'completed') {
-          loadInstalledModels()
-        }
-      }),
-      listen<number>('update-download-progress', (event) => {
-        setUpdateDownloadProgress(event.payload)
-      }),
-      listen<string>('update-download-status', (event) => {
-        if (event.payload === 'completed') {
-          setShowUpdateDialog(true)
-        }
       }),
     ]
 
     return () => {
-      listeners.forEach(l => l.then(f => f()))
-    }
-  }, [])
-
-  // 检查更新
-  useEffect(() => {
-    checkForUpdates()
-  }, [])
-
-  const checkForUpdates = async () => {
-    try {
-      const info = await invoke<UpdateInfo | null>('check_for_updates')
-      if (info) {
-        setUpdateInfo(info)
-      }
-    } catch (e) {
-      console.error('检查更新失败:', e)
-    }
-  }
-
-  const loadInstalledModels = async () => {
-    try {
-      const models = await invoke<InstalledModel[]>('list_models')
-      setInstalledModels(models)
-    } catch (e) {
-      console.error('加载模型列表失败:', e)
-    }
-  }
-
-  const showError = (message: string) => {
-    setError(message)
-    setTimeout(() => setError(null), 5000)
-  }
-
-  const startDetection = async () => {
-    setStep('detecting')
-    setError(null)
-    try {
-      const hw = await invoke<HardwareInfo>('detect_hardware')
-      setHardware(hw)
-      
-      const modelList = await invoke<ModelRecommendation[]>('get_recommended_models', {
-        vramGb: hw.total_vram_gb,
-        ramGb: hw.ram_gb
+      listeners.forEach(promise => {
+        promise.then(unlisten => unlisten())
       })
-      setModels(modelList)
-      
-      const recommended = modelList.find(m => m.recommended)
-      if (recommended) {
-        setSelectedModel(recommended.name)
-      }
-      
-      const ollamaOk = await invoke<boolean>('check_ollama_installed')
-      setOllamaInstalled(ollamaOk)
-      
-      const openclawOk = await invoke<boolean>('check_openclaw_installed')
-      setOpenclawInstalled(openclawOk)
-      
-      await loadInstalledModels()
-      setStep('select-model')
-    } catch (error) {
-      console.error('硬件检测失败:', error)
-      showError(`硬件检测失败: ${error}`)
-      setStep('welcome')
+    }
+  }, [])
+
+  // 授权码验证
+  const handleLicenseSubmit = () => {
+    if (validateLicenseCode(licenseCode.toUpperCase())) {
+      setIsLicensed(true)
+      localStorage.setItem('openclaw_licensed', 'true')
+      setLicenseError('')
+      setStep('detecting')
+    } else {
+      setLicenseError('授权码无效，请检查后重试')
     }
   }
 
-  const startInstall = async () => {
+  // 跳过付款（已授权）
+  const handleSkipPayment = () => {
+    if (isLicensed) {
+      setStep('detecting')
+    } else {
+      setShowPayment(true)
+    }
+  }
+
+  // 硬件检测
+  const detectHardware = async () => {
+    setStep('detecting')
+    try {
+      const info = await invoke<HardwareInfo>('detect_hardware')
+      setHardware(info)
+      const recommendations = await invoke<ModelRecommendation[]>('get_recommended_models', {
+        vramGb: info.total_vram_gb,
+        ramGb: info.ram_gb
+      })
+      setModels(recommendations)
+      
+      const ollama = await invoke<boolean>('check_ollama_installed')
+      setOllamaInstalled(ollama)
+      
+      const openclaw = await invoke<boolean>('check_openclaw_installed')
+      setOpenclawInstalled(openclaw)
+      
+      setTimeout(() => setStep('select-model'), 1000)
+    } catch (err) {
+      setError(`硬件检测失败: ${err}`)
+    }
+  }
+
+  // 安装模型
+  const installModel = async () => {
+    if (!selectedModel) return
     setStep('installing')
     setInstallLog([])
-    setError(null)
-    setDownloadStatus('idle')
+    setDownloadStatus('downloading')
     
     try {
-      // 1. 安装 Ollama（如果需要）
-      if (!ollamaInstalled) {
-        setInstallLog(prev => [...prev, '📦 正在安装 Ollama...'])
-        await invoke('install_ollama')
-        setOllamaInstalled(true)
-      } else {
-        setInstallLog(prev => [...prev, '✅ Ollama 已安装'])
-      }
-      
-      // 2. 下载模型（带进度）
-      setDownloadStatus('downloading')
-      setInstallLog(prev => [...prev, `⬇️ 正在下载模型: ${selectedModel}`])
       await invoke('pull_model', { modelName: selectedModel })
-      
-      // 3. 安装 OpenClaw（如果需要）
-      if (!openclawInstalled) {
-        setInstallLog(prev => [...prev, '📦 正在安装 OpenClaw...'])
-        await invoke('install_openclaw')
-        setOpenclawInstalled(true)
-      } else {
-        setInstallLog(prev => [...prev, '✅ OpenClaw 已安装'])
-      }
-      
-      // 4. 配置 OpenClaw
-      setInstallLog(prev => [...prev, '⚙️ 正在配置 OpenClaw...'])
-      const configPath = await invoke<string>('configure_openclaw', { modelName: selectedModel })
-      setInstallLog(prev => [...prev, `✅ 配置文件已创建: ${configPath}`])
-      
+      await invoke('configure_openclaw', { modelName: selectedModel })
       setStep('complete')
-    } catch (error) {
-      console.error('安装失败:', error)
-      showError(`安装失败: ${error}`)
+    } catch (err) {
+      setError(`安装失败: ${err}`)
       setDownloadStatus('failed')
     }
   }
 
-  const handleDeleteModel = async (modelName: string) => {
-    if (!confirm(`确定要删除模型 "${modelName}" 吗？`)) return
-    
+  // 加载已安装模型
+  const loadInstalledModels = async () => {
     try {
-      await invoke('delete_model', { modelName })
-      await loadInstalledModels()
-      setInstallLog(prev => [...prev, `✅ 已删除模型: ${modelName}`])
-    } catch (e) {
-      showError(`删除失败: ${e}`)
+      const models = await invoke<InstalledModel[]>('list_models')
+      setInstalledModels(models)
+    } catch (err) {
+      console.error('加载模型列表失败:', err)
     }
   }
 
-  const handleModelSelect = async (modelName: string) => {
-    setSelectedInstalledModel(modelName)
+  // 获取模型详情
+  const getModelDetails = async (name: string) => {
     try {
-      const details = await invoke<ModelDetails>('get_model_info', { modelName })
+      const details = await invoke<ModelDetails>('get_model_info', { modelName: name })
       setModelDetails(details)
-    } catch (e) {
-      console.error('获取模型详情失败:', e)
+      setSelectedInstalledModel(name)
+    } catch (err) {
+      console.error('获取模型详情失败:', err)
     }
   }
 
-  const handleDownloadUpdate = async () => {
+  // 删除模型
+  const deleteModel = async (name: string) => {
     try {
-      await invoke('download_update')
-    } catch (e) {
-      showError(`下载更新失败: ${e}`)
+      await invoke('delete_model', { modelName: name })
+      await loadInstalledModels()
+      setSelectedInstalledModel(null)
+    } catch (err) {
+      setError(`删除失败: ${err}`)
     }
   }
 
-  const handleInstallUpdate = async () => {
-    try {
-      await invoke('install_update')
-    } catch (e) {
-      showError(`安装更新失败: ${e}`)
-    }
-  }
+  // 渲染欢迎界面
+  const renderWelcome = () => (
+    <div className="text-center">
+      <div className="mb-8">
+        <div className="w-24 h-24 mx-auto mb-4 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
+          <svg className="w-12 h-12 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+        </div>
+        <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+          OpenClaw 本地版安装器
+        </h1>
+        <p className="text-gray-600 dark:text-gray-400 mt-2">
+          零 API 费用 · 完全本地化 · 隐私安全
+        </p>
+      </div>
 
-  const isDark = theme === 'dark'
+      <div className="space-y-4 mb-8">
+        <div className="flex items-center justify-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+          <svg className="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          自动检测硬件配置
+        </div>
+        <div className="flex items-center justify-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+          <svg className="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          智能推荐最佳模型
+        </div>
+        <div className="flex items-center justify-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+          <svg className="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          一键安装配置
+        </div>
+      </div>
+
+      <button
+        onClick={() => setStep('license')}
+        className="px-8 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg font-medium hover:opacity-90 transition-opacity shadow-lg"
+      >
+        开始安装
+      </button>
+
+      {/* 公司署名 */}
+      <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          © 2026 北京缘辉旺网络科技有限公司
+        </p>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+          Beijing Yuanhuiwang Network Technology Co., Ltd.
+        </p>
+      </div>
+    </div>
+  )
+
+  // 渲染授权界面
+  const renderLicense = () => (
+    <div className="max-w-md mx-auto">
+      <h2 className="text-2xl font-bold text-center mb-6">软件授权</h2>
+      
+      {!showPayment ? (
+        <div className="text-center">
+          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-6 mb-6">
+            <p className="text-gray-700 dark:text-gray-300 mb-4">
+              本软件需要授权才能使用
+            </p>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              安装服务费：<span className="text-2xl font-bold text-blue-600">¥66.66</span>
+            </p>
+          </div>
+          
+          <div className="space-y-3">
+            <button
+              onClick={() => setShowPayment(true)}
+              className="w-full px-6 py-3 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-colors"
+            >
+              微信扫码支付
+            </button>
+            
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-300 dark:border-gray-600"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-white dark:bg-gray-800 text-gray-500">或者</span>
+              </div>
+            </div>
+            
+            <div className="space-y-3">
+              <input
+                type="text"
+                placeholder="输入授权码: OPENCLAW-XXXX-XXXX-XXXX"
+                value={licenseCode}
+                onChange={(e) => setLicenseCode(e.target.value.toUpperCase())}
+                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+              />
+              
+              {licenseError && (
+                <p className="text-red-500 text-sm">{licenseError}</p>
+              )}
+              
+              <button
+                onClick={handleLicenseSubmit}
+                className="w-full px-6 py-3 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors"
+              >
+                验证授权码
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="text-center">
+          <div className="bg-white dark:bg-gray-700 rounded-lg p-6 mb-6 shadow-lg">
+            <h3 className="text-lg font-bold mb-4">微信扫码支付</h3>
+            <div className="w-48 h-48 mx-auto bg-gray-100 rounded-lg flex items-center justify-center mb-4">
+              {/* 微信收款码占位符 - 实际使用时替换为真实二维码 */}
+              <div className="text-center">
+                <svg className="w-32 h-32 text-gray-400 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                </svg>
+                <p className="text-sm text-gray-500 mt-2">微信扫码支付 ¥66.66</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              支付完成后，请联系客服获取授权码
+            </p>
+          </div>
+          
+          <div className="space-y-3">
+            <input
+              type="text"
+              placeholder="输入授权码"
+              value={licenseCode}
+              onChange={(e) => setLicenseCode(e.target.value.toUpperCase())}
+              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+            />
+            
+            {licenseError && (
+              <p className="text-red-500 text-sm">{licenseError}</p>
+            )}
+            
+            <button
+              onClick={handleLicenseSubmit}
+              className="w-full px-6 py-3 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors"
+            >
+              验证授权码并继续
+            </button>
+            
+            <button
+              onClick={() => setShowPayment(false)}
+              className="w-full px-6 py-3 text-gray-600 dark:text-gray-400 hover:text-gray-800"
+            >
+              返回
+            </button>
+          </div>
+        </div>
+      )}
+      
+      {/* 公司署名 */}
+      <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700 text-center">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          © 2026 北京缘辉旺网络科技有限公司
+        </p>
+      </div>
+    </div>
+  )
+
+  // 渲染硬件检测界面
+  const renderDetecting = () => (
+    <div className="text-center">
+      <div className="w-20 h-20 mx-auto mb-6 relative">
+        <div className="absolute inset-0 border-4 border-blue-200 dark:border-blue-800 rounded-full"></div>
+        <div className="absolute inset-0 border-4 border-blue-500 rounded-full animate-spin border-t-transparent"></div>
+      </div>
+      <h2 className="text-xl font-semibold mb-2">正在检测硬件配置...</h2>
+      <p className="text-gray-600 dark:text-gray-400">请稍候</p>
+    </div>
+  )
+
+  // 渲染模型选择界面
+  const renderSelectModel = () => (
+    <div>
+      <h2 className="text-xl font-semibold mb-4">硬件检测结果</h2>
+      
+      {hardware && (
+        <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-6">
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="text-gray-600 dark:text-gray-400">CPU:</span>
+              <span className="ml-2 font-medium">{hardware.cpu_name}</span>
+            </div>
+            <div>
+              <span className="text-gray-600 dark:text-gray-400">核心数:</span>
+              <span className="ml-2 font-medium">{hardware.cpu_cores}</span>
+            </div>
+            <div>
+              <span className="text-gray-600 dark:text-gray-400">内存:</span>
+              <span className="ml-2 font-medium">{hardware.ram_gb.toFixed(1)} GB</span>
+            </div>
+            <div>
+              <span className="text-gray-600 dark:text-gray-400">显存:</span>
+              <span className="ml-2 font-medium">{hardware.total_vram_gb.toFixed(1)} GB</span>
+            </div>
+          </div>
+          {hardware.gpus.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+              <span className="text-gray-600 dark:text-gray-400 text-sm">显卡:</span>
+              {hardware.gpus.map((gpu, i) => (
+                <div key={i} className="ml-2 text-sm">{gpu.name} ({gpu.vram_gb.toFixed(1)}GB)</div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <h3 className="font-medium mb-3">推荐模型</h3>
+      <div className="space-y-3 mb-6 max-h-60 overflow-y-auto">
+        {models.map((model) => (
+          <div
+            key={model.name}
+            onClick={() => setSelectedModel(model.name)}
+            className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+              selectedModel === model.name
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                : 'border-gray-200 dark:border-gray-600 hover:border-blue-300'
+            }`}
+          >
+            <div className="flex justify-between items-start">
+              <div>
+                <div className="font-medium">{model.display_name}</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">{model.description}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-sm font-medium">{model.size_gb} GB</div>
+                {model.recommended && (
+                  <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">推荐</span>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={installModel}
+        disabled={!selectedModel}
+        className={`w-full py-3 rounded-lg font-medium transition-colors ${
+          selectedModel
+            ? 'bg-blue-500 text-white hover:bg-blue-600'
+            : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+        }`}
+      >
+        开始安装
+      </button>
+    </div>
+  )
+
+  // 渲染安装进度界面
+  const renderInstalling = () => (
+    <div>
+      <h2 className="text-xl font-semibold mb-4">正在安装...</h2>
+      
+      {downloadStatus === 'downloading' && downloadProgress && (
+        <div className="mb-6">
+          <div className="flex justify-between text-sm mb-2">
+            <span>{downloadProgress.phase}</span>
+            <span>{downloadProgress.percent}%</span>
+          </div>
+          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+            <div
+              className="bg-blue-500 h-3 rounded-full transition-all duration-300"
+              style={{ width: `${downloadProgress.percent}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="bg-gray-900 rounded-lg p-4 h-48 overflow-y-auto">
+        {installLog.map((log, i) => (
+          <div key={i} className="text-green-400 text-sm font-mono">{log}</div>
+        ))}
+      </div>
+    </div>
+  )
+
+  // 渲染完成界面
+  const renderComplete = () => (
+    <div className="text-center">
+      <div className="w-20 h-20 mx-auto mb-6 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center">
+        <svg className="w-10 h-10 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+      </div>
+      <h2 className="text-2xl font-bold mb-2">安装完成！</h2>
+      <p className="text-gray-600 dark:text-gray-400 mb-6">OpenClaw 本地版已成功安装</p>
+      
+      <div className="space-y-3">
+        <button
+          onClick={async () => {
+            await loadInstalledModels()
+            setStep('model-management')
+          }}
+          className="w-full px-6 py-3 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600"
+        >
+          模型管理
+        </button>
+        <button
+          onClick={() => window.close()}
+          className="w-full px-6 py-3 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
+        >
+          关闭
+        </button>
+      </div>
+    </div>
+  )
+
+  // 渲染模型管理界面
+  const renderModelManagement = () => (
+    <div>
+      <h2 className="text-xl font-semibold mb-4">模型管理</h2>
+      
+      <div className="grid grid-cols-3 gap-4">
+        <div className="col-span-2">
+          <h3 className="font-medium mb-3">已安装模型</h3>
+          <div className="space-y-2 max-h-80 overflow-y-auto">
+            {installedModels.map((model) => (
+              <div
+                key={model.name}
+                onClick={() => getModelDetails(model.name)}
+                className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                  selectedInstalledModel === model.name
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                    : 'border-gray-200 dark:border-gray-600 hover:border-blue-300'
+                }`}
+              >
+                <div className="font-medium">{model.name}</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  {model.size} · {model.modified_at}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        
+        <div>
+          {modelDetails && selectedInstalledModel && (
+            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+              <h3 className="font-medium mb-3">模型详情</h3>
+              <div className="space-y-2 text-sm">
+                <div><span className="text-gray-600 dark:text-gray-400">格式:</span> {modelDetails.format}</div>
+                <div><span className="text-gray-600 dark:text-gray-400">系列:</span> {modelDetails.family}</div>
+                <div><span className="text-gray-600 dark:text-gray-400">参数:</span> {modelDetails.parameter_size}</div>
+                <div><span className="text-gray-600 dark:text-gray-400">量化:</span> {modelDetails.quantization_level}</div>
+              </div>
+              <button
+                onClick={() => deleteModel(selectedInstalledModel)}
+                className="w-full mt-4 px-4 py-2 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600"
+              >
+                删除模型
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+      
+      <button
+        onClick={() => setStep('select-model')}
+        className="mt-6 px-6 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
+      >
+        返回
+      </button>
+    </div>
+  )
 
   return (
-    <div className={`min-h-screen p-6 transition-colors duration-300 ${
-      isDark ? 'bg-gray-900 text-gray-100' : 'bg-gradient-to-br from-blue-50 to-indigo-100'
-    }`}>
-      {/* 错误提示 */}
-      {error && (
-        <div className="fixed top-4 right-4 max-w-md bg-red-500 text-white p-4 rounded-lg shadow-lg z-50 flex items-start gap-3">
-          <span className="text-xl">⚠️</span>
-          <div className="flex-1">
-            <div className="font-medium">错误</div>
-            <div className="text-sm opacity-90">{error}</div>
+    <div className={`min-h-screen ${theme === 'dark' ? 'dark' : ''}`}>
+      <div className="min-h-screen bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+        {/* 顶部栏 */}
+        <div className="flex justify-between items-center px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <span className="font-semibold">OpenClaw 本地版</span>
           </div>
-          <button onClick={() => setError(null)} className="text-white/80 hover:text-white">✕</button>
-        </div>
-      )}
-
-      {/* 更新提示 */}
-      {updateInfo && (
-        <div className="fixed top-4 left-4 max-w-md bg-blue-500 text-white p-4 rounded-lg shadow-lg z-50">
-          <div className="flex items-start gap-3">
-            <span className="text-xl">🎉</span>
-            <div className="flex-1">
-              <div className="font-medium">发现新版本 v{updateInfo.version}</div>
-              <div className="text-sm opacity-90 mt-1">{updateInfo.release_notes.split('\n')[0]}</div>
-            </div>
-            <button
-              onClick={handleDownloadUpdate}
-              className="px-3 py-1 bg-white text-blue-500 rounded text-sm font-medium hover:bg-blue-50"
-            >
-              更新
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* 更新对话框 */}
-      {showUpdateDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className={`max-w-md w-full mx-4 p-6 rounded-xl shadow-2xl ${isDark ? 'bg-gray-800' : 'bg-white'}`}>
-            <h3 className="text-xl font-bold mb-4">更新已下载</h3>
-            <p className="text-gray-600 dark:text-gray-300 mb-6">
-              新版本已下载完成，是否立即安装？
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowUpdateDialog(false)}
-                className={`flex-1 py-2 rounded-lg ${isDark ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'}`}
-              >
-                稍后安装
-              </button>
-              <button
-                onClick={handleInstallUpdate}
-                className="flex-1 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-              >
-                立即安装
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-3 mb-2">
-            <h1 className={`text-3xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              🐾 OpenClaw 本地版
-            </h1>
-            <button
-              onClick={() => setTheme(isDark ? 'light' : 'dark')}
-              className={`p-2 rounded-lg transition-colors ${isDark ? 'bg-gray-800 hover:bg-gray-700' : 'bg-white hover:bg-gray-50'}`}
-              title={isDark ? '切换到亮色模式' : '切换到深色模式'}
-            >
-              {isDark ? '☀️' : '🌙'}
-            </button>
-          </div>
-          <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-            零 API 费用 · 完全本地化 · 隐私安全
-          </p>
+          <button
+            onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            {theme === 'light' ? '🌙' : '☀️'}
+          </button>
         </div>
 
-        {/* Progress Steps */}
-        <div className="flex items-center justify-center mb-8">
-          {['欢迎', '检测', '选择模型', '安装', '完成'].map((_, idx) => {
-            const steps: InstallStep[] = ['welcome', 'detecting', 'select-model', 'installing', 'complete']
-            const currentIdx = steps.indexOf(step)
-            const isActive = idx === currentIdx
-            const isComplete = idx < currentIdx
-            
-            return (
-              <div key={idx} className="flex items-center">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${
-                  isComplete ? 'bg-green-500 text-white' :
-                  isActive ? 'bg-blue-500 text-white' :
-                  isDark ? 'bg-gray-700 text-gray-400' : 'bg-gray-200 text-gray-600'
-                }`}>
-                  {isComplete ? '✓' : idx + 1}
-                </div>
-                {idx < 4 && (
-                  <div className={`w-12 h-1 transition-colors ${idx < currentIdx ? 'bg-green-500' : isDark ? 'bg-gray-700' : 'bg-gray-200'}`} />
-                )}
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Content */}
-        <div className={`rounded-2xl shadow-xl p-8 transition-colors ${isDark ? 'bg-gray-800' : 'bg-white'}`}>
-          {step === 'welcome' && (
-            <div className="text-center">
-              <div className="text-6xl mb-6">🚀</div>
-              <h2 className={`text-2xl font-bold mb-4 ${isDark ? 'text-white' : ''}`}>欢迎使用 OpenClaw 本地版</h2>
-              <div className="text-left max-w-md mx-auto mb-8 space-y-3">
-                <div className="flex items-start gap-3">
-                  <span className="text-green-500 text-xl">✓</span>
-                  <div>
-                    <div className={`font-medium ${isDark ? 'text-white' : ''}`}>无需 API Key</div>
-                    <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>使用本地算力，零费用运行</div>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <span className="text-green-500 text-xl">✓</span>
-                  <div>
-                    <div className={`font-medium ${isDark ? 'text-white' : ''}`}>自动硬件检测</div>
-                    <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>智能推荐最适合的模型</div>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <span className="text-green-500 text-xl">✓</span>
-                  <div>
-                    <div className={`font-medium ${isDark ? 'text-white' : ''}`}>一键安装</div>
-                    <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>自动安装 Ollama、下载模型、配置 OpenClaw</div>
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-3 justify-center">
-                <button
-                  onClick={startDetection}
-                  className="px-8 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium text-lg transition-colors"
-                >
-                  开始安装
-                </button>
-                {installedModels.length > 0 && (
-                  <button
-                    onClick={() => setStep('model-management')}
-                    className={`px-8 py-3 rounded-lg font-medium text-lg transition-colors ${isDark ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}
-                  >
-                    模型管理
-                  </button>
-                )}
-              </div>
+        {/* 主内容 */}
+        <div className="max-w-2xl mx-auto px-6 py-12">
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
+              {error}
+              <button onClick={() => setError(null)} className="ml-4 text-sm underline">关闭</button>
             </div>
           )}
 
-          {step === 'detecting' && (
-            <div className="text-center py-12">
-              <div className="animate-spin text-6xl mb-4">⚙️</div>
-              <p className={`text-lg ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>正在检测硬件配置...</p>
-            </div>
-          )}
-
-          {step === 'select-model' && hardware && (
-            <div>
-              <h2 className={`text-2xl font-bold mb-6 ${isDark ? 'text-white' : ''}`}>硬件检测完成</h2>
-              
-              {/* Hardware Info */}
-              <div className="grid grid-cols-3 gap-4 mb-8">
-                <div className={`rounded-lg p-4 ${isDark ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                  <div className={`text-sm mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>CPU</div>
-                  <div className={`font-medium ${isDark ? 'text-white' : ''}`}>{hardware.cpu_name}</div>
-                  <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{hardware.cpu_cores} 核心</div>
-                </div>
-                <div className={`rounded-lg p-4 ${isDark ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                  <div className={`text-sm mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>内存</div>
-                  <div className={`font-medium text-2xl ${isDark ? 'text-white' : ''}`}>{hardware.ram_gb.toFixed(1)} GB</div>
-                </div>
-                <div className={`rounded-lg p-4 ${isDark ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                  <div className={`text-sm mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>GPU 显存</div>
-                  <div className={`font-medium text-2xl ${isDark ? 'text-white' : ''}`}>{hardware.total_vram_gb.toFixed(1)} GB</div>
-                  {hardware.gpus.length > 0 && (
-                    <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-400'}`}>{hardware.gpus[0].name}</div>
-                  )}
-                </div>
-              </div>
-
-              {/* Model Selection */}
-              <h3 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : ''}`}>选择要安装的模型</h3>
-              <div className="space-y-3 mb-6 max-h-64 overflow-y-auto">
-                {models.map((model) => (
-                  <label
-                    key={model.name}
-                    className={`block border-2 rounded-lg p-4 cursor-pointer transition-all ${
-                      selectedModel === model.name
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                        : isDark ? 'border-gray-700 hover:border-gray-600' : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <input
-                        type="radio"
-                        name="model"
-                        value={model.name}
-                        checked={selectedModel === model.name}
-                        onChange={(e) => setSelectedModel(e.target.value)}
-                        className="mt-1"
-                      />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`font-medium ${isDark ? 'text-white' : ''}`}>{model.display_name}</span>
-                          {model.recommended && (
-                            <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">
-                              推荐
-                            </span>
-                          )}
-                          {model.tags.map((tag) => (
-                            <span key={tag} className={`px-2 py-0.5 text-xs rounded-full ${isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                        <div className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{model.description}</div>
-                        <div className={`text-xs mt-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                          大小: {model.size_gb} GB · 最低要求: {model.min_vram} GB VRAM / {model.min_ram} GB RAM
-                        </div>
-                      </div>
-                    </div>
-                  </label>
-                ))}
-              </div>
-
-              {/* Status */}
-              <div className={`rounded-lg p-4 mb-6 ${isDark ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                <div className="flex items-center gap-4 text-sm">
-                  <div className={ollamaInstalled ? 'text-green-600 dark:text-green-400' : 'text-orange-500'}>
-                    {ollamaInstalled ? '✅' : '⚠️'} Ollama {ollamaInstalled ? '已安装' : '待安装'}
-                  </div>
-                  <div className={openclawInstalled ? 'text-green-600 dark:text-green-400' : 'text-orange-500'}>
-                    {openclawInstalled ? '✅' : '⚠️'} OpenClaw {openclawInstalled ? '已安装' : '待安装'}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setStep('welcome')}
-                  className={`px-6 py-3 rounded-lg font-medium transition-colors ${isDark ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}
-                >
-                  返回
-                </button>
-                <button
-                  onClick={startInstall}
-                  disabled={!selectedModel}
-                  className="flex-1 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white rounded-lg font-medium text-lg transition-colors"
-                >
-                  开始安装
-                </button>
-              </div>
-            </div>
-          )}
-
-          {step === 'installing' && (
-            <div>
-              <h2 className={`text-2xl font-bold mb-6 ${isDark ? 'text-white' : ''}`}>正在安装...</h2>
-              
-              {/* 下载进度条 */}
-              {downloadStatus === 'downloading' && downloadProgress && (
-                <div className={`rounded-lg p-4 mb-4 ${isDark ? 'bg-gray-700' : 'bg-blue-50'}`}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className={`font-medium ${isDark ? 'text-white' : 'text-blue-900'}`}>
-                      {downloadProgress.phase === 'downloading' ? '下载中' : downloadProgress.phase}
-                    </span>
-                    <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-blue-600'}`}>
-                      {downloadProgress.percent}%
-                    </span>
-                  </div>
-                  <div className={`w-full h-3 rounded-full overflow-hidden ${isDark ? 'bg-gray-600' : 'bg-blue-200'}`}>
-                    <div
-                      className="h-full bg-blue-500 transition-all duration-300 rounded-full"
-                      style={{ width: `${downloadProgress.percent}%` }}
-                    />
-                  </div>
-                  {downloadProgress.total > 0 && (
-                    <div className={`text-xs mt-2 ${isDark ? 'text-gray-400' : 'text-blue-600'}`}>
-                      {downloadProgress.current.toFixed(1)} MB / {downloadProgress.total.toFixed(1)} MB
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* 更新下载进度 */}
-              {updateDownloadProgress > 0 && updateDownloadProgress < 100 && (
-                <div className={`rounded-lg p-4 mb-4 ${isDark ? 'bg-gray-700' : 'bg-green-50'}`}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className={`font-medium ${isDark ? 'text-white' : 'text-green-900'}`}>
-                      下载更新中
-                    </span>
-                    <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-green-600'}`}>
-                      {updateDownloadProgress}%
-                    </span>
-                  </div>
-                  <div className={`w-full h-3 rounded-full overflow-hidden ${isDark ? 'bg-gray-600' : 'bg-green-200'}`}>
-                    <div
-                      className="h-full bg-green-500 transition-all duration-300 rounded-full"
-                      style={{ width: `${updateDownloadProgress}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-              
-              <div className={`rounded-lg p-4 h-64 overflow-y-auto font-mono text-sm ${
-                isDark ? 'bg-gray-900 text-green-400' : 'bg-gray-900 text-green-400'
-              }`}>
-                {installLog.map((log, idx) => (
-                  <div key={idx} className="mb-1">{log}</div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {step === 'complete' && (
-            <div className="text-center">
-              <div className="text-6xl mb-6">🎉</div>
-              <h2 className={`text-2xl font-bold mb-4 ${isDark ? 'text-white' : ''}`}>安装完成!</h2>
-              <div className="text-left max-w-md mx-auto mb-8 space-y-2">
-                <div className={`p-3 rounded-lg ${isDark ? 'bg-green-900/30 text-green-400' : 'bg-green-50 text-green-700'}`}>
-                  ✅ Ollama 已安装并配置
-                </div>
-                <div className={`p-3 rounded-lg ${isDark ? 'bg-green-900/30 text-green-400' : 'bg-green-50 text-green-700'}`}>
-                  ✅ 模型已下载: {selectedModel}
-                </div>
-                <div className={`p-3 rounded-lg ${isDark ? 'bg-green-900/30 text-green-400' : 'bg-green-50 text-green-700'}`}>
-                  ✅ OpenClaw 已配置为本地模式
-                </div>
-              </div>
-              <div className={`rounded-lg p-4 mb-6 ${isDark ? 'bg-blue-900/30' : 'bg-blue-50'}`}>
-                <p className={`text-sm ${isDark ? 'text-blue-300' : 'text-blue-700'}`}>
-                  💡 现在你可以通过命令 <code className={`px-2 py-1 rounded ${isDark ? 'bg-blue-800' : 'bg-blue-100'}`}>openclaw</code> 启动 OpenClaw，
-                  它将使用本地模型运行，无需任何 API Key！
-                </p>
-              </div>
-              <div className="flex gap-3 justify-center">
-                <button
-                  onClick={() => setStep('model-management')}
-                  className={`px-6 py-3 rounded-lg font-medium transition-colors ${isDark ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}
-                >
-                  模型管理
-                </button>
-                <button
-                  onClick={() => window.close()}
-                  className="px-8 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium text-lg transition-colors"
-                >
-                  完成
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* 模型管理页面 */}
-          {step === 'model-management' && (
-            <div>
-              <div className="flex items-center justify-between mb-6">
-                <h2 className={`text-2xl font-bold ${isDark ? 'text-white' : ''}`}>模型管理</h2>
-                <button
-                  onClick={() => setStep('welcome')}
-                  className={`px-4 py-2 rounded-lg transition-colors ${isDark ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}
-                >
-                  返回
-                </button>
-              </div>
-
-              {/* 已安装模型列表 */}
-              <div className="space-y-3">
-                {installedModels.length === 0 ? (
-                  <div className={`text-center py-12 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    暂无已安装的模型
-                  </div>
-                ) : (
-                  installedModels.map((model) => (
-                    <div
-                      key={model.name}
-                      className={`border-2 rounded-lg p-4 transition-all cursor-pointer ${
-                        selectedInstalledModel === model.name
-                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                          : isDark ? 'border-gray-700 hover:border-gray-600' : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                      onClick={() => handleModelSelect(model.name)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className={`font-medium ${isDark ? 'text-white' : ''}`}>{model.name}</div>
-                          <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                            大小: {model.size} · 修改时间: {model.modified_at}
-                          </div>
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleDeleteModel(model.name)
-                          }}
-                          className="px-3 py-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
-                        >
-                          删除
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {/* 模型详情 */}
-              {selectedInstalledModel && modelDetails && (
-                <div className={`mt-6 p-4 rounded-lg ${isDark ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                  <h3 className={`font-semibold mb-3 ${isDark ? 'text-white' : ''}`}>模型详情</h3>
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div>
-                      <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>格式:</span>
-                      <span className={`ml-2 ${isDark ? 'text-white' : ''}`}>{modelDetails.format}</span>
-                    </div>
-                    <div>
-                      <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>系列:</span>
-                      <span className={`ml-2 ${isDark ? 'text-white' : ''}`}>{modelDetails.family}</span>
-                    </div>
-                    <div>
-                      <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>参数量:</span>
-                      <span className={`ml-2 ${isDark ? 'text-white' : ''}`}>{modelDetails.parameter_size}</span>
-                    </div>
-                    <div>
-                      <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>量化:</span>
-                      <span className={`ml-2 ${isDark ? 'text-white' : ''}`}>{modelDetails.quantization_level}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* 安装新模型 */}
-              <button
-                onClick={() => setStep('select-model')}
-                className="w-full mt-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
-              >
-                + 安装新模型
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className={`text-center mt-6 text-sm ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
-          OpenClaw 本地版 · 
-          <a href="https://docs.openclaw.ai" className="text-blue-500 hover:underline">文档</a> · 
-          <a href="https://github.com/openclaw/openclaw" className="text-blue-500 hover:underline">GitHub</a>
+          {step === 'welcome' && renderWelcome()}
+          {step === 'license' && renderLicense()}
+          {step === 'detecting' && (detectHardware(), renderDetecting())}
+          {step === 'select-model' && renderSelectModel()}
+          {step === 'installing' && renderInstalling()}
+          {step === 'complete' && renderComplete()}
+          {step === 'model-management' && renderModelManagement()}
         </div>
       </div>
     </div>
