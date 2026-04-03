@@ -143,7 +143,7 @@ function App() {
     
     try {
       // 调用线上API验证授权码
-      const response = await fetch('https://yunying.yuanhuiwang.com/api/license/validate-license', {
+      const response = await fetch('https://www.ku1818.cn/api/license/validate-license', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code })
