@@ -20,20 +20,28 @@ export function PaymentModal({ isOpen, onClose, onPaid }: PaymentModalProps) {
   const [licenseCode, setLicenseCode] = useState('')
   const [error, setError] = useState('')
   
-  // 支付服务地址（需要部署后替换）
-  const PAYMENT_SERVER = 'http://localhost:3000'
+  // 支付服务地址
+  const PAYMENT_SERVER = 'https://www.ku1818.cn/api/license'
 
   // 创建订单
   const createOrder = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`${PAYMENT_SERVER}/api/create-order`, {
+      const res = await fetch(`${PAYMENT_SERVER}/create-order`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       })
       const data = await res.json()
       if (data.success) {
-        setOrder(data.order)
+        // 适配后端返回格式
+        setOrder({
+          orderId: data.order_id,
+          amount: data.amount,
+          productName: 'OpenClaw本地版安装授权',
+          qrCode: data.qr_code
+        })
+      } else {
+        setError(data.error || '创建订单失败')
       }
     } catch (err) {
       setError('创建订单失败，请检查网络连接')
@@ -47,11 +55,11 @@ export function PaymentModal({ isOpen, onClose, onPaid }: PaymentModalProps) {
     
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`${PAYMENT_SERVER}/api/order/${order.orderId}`)
+        const res = await fetch(`${PAYMENT_SERVER}/check-order/${order.orderId}`)
         const data = await res.json()
         
-        if (data.success && data.order.status === 'paid') {
-          onPaid(data.order.licenseCode)
+        if (data.success && data.status === 'paid') {
+          onPaid(data.license_code)
           clearInterval(interval)
         }
       } catch (err) {
@@ -87,7 +95,7 @@ export function PaymentModal({ isOpen, onClose, onPaid }: PaymentModalProps) {
     
     setLoading(true)
     try {
-      const res = await fetch(`${PAYMENT_SERVER}/api/validate-license`, {
+      const res = await fetch(`${PAYMENT_SERVER}/validate-license`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: licenseCode.toUpperCase() })
@@ -97,7 +105,7 @@ export function PaymentModal({ isOpen, onClose, onPaid }: PaymentModalProps) {
       if (data.success && data.valid) {
         onPaid(licenseCode.toUpperCase())
       } else {
-        setError('授权码无效')
+        setError(data.message || '授权码无效')
       }
     } catch (err) {
       // 离线验证
@@ -214,7 +222,7 @@ export function PaymentModal({ isOpen, onClose, onPaid }: PaymentModalProps) {
                   订单号: {order.orderId}
                 </p>
                 <p className="text-lg font-bold text-blue-600 mt-2">
-                  ¥{(order.amount / 100).toFixed(2)}
+                  ¥{order.amount.toFixed(2)}
                 </p>
                 <p className="text-sm text-gray-500 mt-4">
                   支付完成后将自动跳转...
