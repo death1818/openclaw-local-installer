@@ -2,19 +2,88 @@ use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 use tauri::{Emitter, Manager};
 
+/// 检查 Ollama 是否已安装
+fn check_ollama_installed() -> bool {
+    Command::new("ollama")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// 安装 Ollama (Windows)
+#[cfg(target_os = "windows")]
+fn install_ollama_windows() -> Result<(), String> {
+    let download_url = "https://ollama.com/download/OllamaSetup.exe";
+    let temp_dir = std::env::temp_dir();
+    let installer_path = temp_dir.join("OllamaSetup.exe");
+    
+    // 使用 PowerShell 下载
+    let ps_output = Command::new("powershell")
+        .args(&[
+            "-Command",
+            &format!("Invoke-WebRequest -Uri '{}' -OutFile '{}' -UseBasicParsing", download_url, installer_path.display()),
+        ])
+        .output()
+        .map_err(|e| format!("下载 Ollama 失败: {}", e))?;
+    
+    if !ps_output.status.success() {
+        return Err("下载 Ollama 安装程序失败".to_string());
+    }
+    
+    // 运行安装程序 (静默安装)
+    let install_output = Command::new(&installer_path)
+        .args(&["/S"])
+        .output()
+        .map_err(|e| format!("运行安装程序失败: {}", e))?;
+    
+    // 清理安装程序
+    let _ = std::fs::remove_file(&installer_path);
+    
+    // 等待安装完成
+    std::thread::sleep(std::time::Duration::from_secs(5));
+    
+    Ok(())
+}
+
 /// 下载模型并报告进度
 pub async fn pull_model_with_progress(
     model_name: String,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     app.emit("model-download-status", "starting").ok();
+    app.emit("model-download-log", "检查 Ollama 安装状态...").ok();
+    
+    // 检查 Ollama 是否已安装
+    if !check_ollama_installed() {
+        app.emit("model-download-log", "Ollama 未安装，正在自动安装...").ok();
+        
+        #[cfg(target_os = "windows")]
+        {
+            install_ollama_windows()?;
+        }
+        
+        #[cfg(not(target_os = "windows"))]
+        {
+            return Err("请先安装 Ollama: https://ollama.com".to_string());
+        }
+        
+        // 再次检查
+        if !check_ollama_installed() {
+            return Err("Ollama 安装失败，请手动安装: https://ollama.com".to_string());
+        }
+        
+        app.emit("model-download-log", "Ollama 安装完成").ok();
+    }
+    
+    app.emit("model-download-log", format!("正在下载模型: {}", model_name)).ok();
     
     let mut child = Command::new("ollama")
         .args(&["pull", &model_name])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("启动下载失败: {}", e))?;
+        .map_err(|e| format!("启动下载失败: {}。请确保 Ollama 已安装并运行。", e))?;
 
     let stdout = child.stdout.take().ok_or("无法读取输出")?;
     let reader = BufReader::new(stdout);
@@ -35,10 +104,11 @@ pub async fn pull_model_with_progress(
 
     if status.success() {
         app.emit("model-download-status", "completed").ok();
+        app.emit("model-download-log", "模型下载完成！".to_string()).ok();
         Ok(())
     } else {
         app.emit("model-download-status", "failed").ok();
-        Err("下载模型失败".to_string())
+        Err("下载模型失败。请检查网络连接并确保 Ollama 服务正在运行。".to_string())
     }
 }
 
