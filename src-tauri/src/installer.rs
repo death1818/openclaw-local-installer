@@ -146,9 +146,52 @@ pub fn get_recommended_models(vram_gb: f64, ram_gb: f64) -> Vec<ModelRecommendat
 
 // 检查 Ollama 是否已安装
 pub async fn check_ollama_installed() -> Result<bool, Box<dyn std::error::Error>> {
+    // 尝试运行 ollama --version
     let output = Command::new("ollama")
         .arg("--version")
         .output();
+    
+    if let Ok(o) = &output {
+        if o.status.success() {
+            return Ok(true);
+        }
+    }
+    
+    // Windows 上检查默认安装路径
+    #[cfg(target_os = "windows")]
+    {
+        // 检查常见安装路径
+        let paths = vec![
+            std::env::var("LOCALAPPDATA").unwrap_or_default() + "\\Programs\\Ollama\\ollama.exe",
+            std::env::var("USERPROFILE").unwrap_or_default() + "\\AppData\\Local\\Programs\\Ollama\\ollama.exe",
+            "C:\\Users\\Default\\AppData\\Local\\Programs\\Ollama\\ollama.exe".to_string(),
+        ];
+        
+        for path in paths {
+            if std::path::Path::new(&path).exists() {
+                // 尝试运行
+                if let Ok(o) = Command::new(&path).arg("--version").output() {
+                    if o.status.success() {
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+        
+        // 尝试通过 where 命令查找
+        if let Ok(where_output) = Command::new("where").arg("ollama").output() {
+            if where_output.status.success() {
+                let stdout = String::from_utf8_lossy(&where_output.stdout);
+                for line in stdout.lines() {
+                    if let Ok(o) = Command::new(line.trim()).arg("--version").output() {
+                        if o.status.success() {
+                            return Ok(true);
+                        }
+                    }
+                }
+            }
+        }
+    }
     
     Ok(output.map(|o| o.status.success()).unwrap_or(false))
 }

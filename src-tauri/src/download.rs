@@ -4,11 +4,47 @@ use tauri::{Emitter, Manager};
 
 /// 检查 Ollama 是否已安装
 fn check_ollama_installed() -> bool {
-    Command::new("ollama")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    // 尝试运行 ollama --version
+    if let Ok(o) = Command::new("ollama").arg("--version").output() {
+        if o.status.success() {
+            return true;
+        }
+    }
+    
+    // Windows 上检查默认安装路径
+    #[cfg(target_os = "windows")]
+    {
+        let paths = vec![
+            std::env::var("LOCALAPPDATA").unwrap_or_default() + "\\Programs\\Ollama\\ollama.exe",
+            std::env::var("USERPROFILE").unwrap_or_default() + "\\AppData\\Local\\Programs\\Ollama\\ollama.exe",
+        ];
+        
+        for path in paths {
+            if std::path::Path::new(&path).exists() {
+                if let Ok(o) = Command::new(&path).arg("--version").output() {
+                    if o.status.success() {
+                        return true;
+                    }
+                }
+            }
+        }
+        
+        // 尝试通过 where 命令查找
+        if let Ok(where_output) = Command::new("where").arg("ollama").output() {
+            if where_output.status.success() {
+                let stdout = String::from_utf8_lossy(&where_output.stdout);
+                for line in stdout.lines() {
+                    if let Ok(o) = Command::new(line.trim()).arg("--version").output() {
+                        if o.status.success() {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    false
 }
 
 /// 安装 Ollama (Windows) - 下载并提示用户手动安装
