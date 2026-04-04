@@ -54,20 +54,11 @@ interface DownloadProgress {
 type InstallStep = 'welcome' | 'license' | 'detecting' | 'select-model' | 'installing' | 'complete' | 'model-management'
 type Theme = 'light' | 'dark'
 
-// 授权码验证（简单的哈希校验）
+// 授权码格式验证
 function validateLicenseCode(code: string): boolean {
   // 授权码格式: OPENCLAW-XXXX-XXXX-XXXX
   const pattern = /^OPENCLAW-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/
-  if (!pattern.test(code)) return false
-  
-  // 简单校验和验证
-  const parts = code.replace('OPENCLAW-', '').split('-')
-  const checksum = parts.join('')
-  let sum = 0
-  for (let i = 0; i < checksum.length; i++) {
-    sum += checksum.charCodeAt(i)
-  }
-  return sum % 97 === 0 || sum % 89 === 0 || sum % 73 === 0
+  return pattern.test(code)
 }
 
 function App() {
