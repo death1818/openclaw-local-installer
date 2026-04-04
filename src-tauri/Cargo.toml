@@ -39,3 +39,7 @@ codegen-units = 1
 lto = true
 opt-level = "z"
 strip = true
+
+# 增加 Linux 栈大小，避免 AppImage 栈溢出
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-args=-Wl,-z,stack-size=8388608"]

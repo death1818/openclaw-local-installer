@@ -249,8 +249,10 @@ async fn detect_nvidia_gpus() -> Result<Vec<GpuInfo>, Box<dyn std::error::Error>
 
 // ============== 主检测函数 ==============
 pub async fn detect_hardware() -> Result<HardwareInfo, Box<dyn std::error::Error>> {
-    let mut sys = System::new_all();
-    sys.refresh_all();
+    // 使用 new() 而非 new_all() 避免栈溢出（特别是在 AppImage 环境下）
+    let mut sys = System::new();
+    sys.refresh_cpu_all();
+    sys.refresh_memory();
     
     // CPU 信息
     let cpu_name = sys.cpus().first()
