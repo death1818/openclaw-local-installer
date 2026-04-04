@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import qrCodeImage from './assets/payment-qr.png'
-// 提示：请将真实的微信收款码图片替换 src/assets/payment-qr.png
+import { open } from '@tauri-apps/plugin-shell'
+// 支付页面 URL
+const PAYMENT_URL = 'https://www.ku1818.cn/buy'
 
 interface GpuInfo {
   name: string
@@ -82,7 +83,16 @@ function App() {
   })
   const [licenseCode, setLicenseCode] = useState('')
   const [licenseError, setLicenseError] = useState('')
-  const [showPayment, setShowPayment] = useState(false)
+  
+  // 打开支付页面
+  const openPaymentPage = async () => {
+    try {
+      await open(PAYMENT_URL)
+    } catch (err) {
+      // 如果 Tauri shell 失败，尝试使用浏览器
+      window.open(PAYMENT_URL, '_blank')
+    }
+  }
   
   // 如果已授权，自动跳转到检测
   useEffect(() => {
@@ -308,78 +318,44 @@ function App() {
     <div className="max-w-md mx-auto">
       <h2 className="text-2xl font-bold text-center mb-6">软件授权</h2>
       
-      {!showPayment ? (
-        <div className="text-center">
-          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-6 mb-6">
-            <p className="text-gray-700 dark:text-gray-300 mb-4">
-              本软件需要授权才能使用
-            </p>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              安装服务费：<span className="text-2xl font-bold text-blue-600">¥66.66</span>
-            </p>
-          </div>
-          
-          <div className="space-y-3">
-            <button
-              onClick={() => setShowPayment(true)}
-              className="w-full px-6 py-3 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-colors"
-            >
-              微信扫码支付
-            </button>
-            
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300 dark:border-gray-600"></div>
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white dark:bg-gray-800 text-gray-500">或者</span>
-              </div>
-            </div>
-            
-            <div className="space-y-3">
-              <input
-                type="text"
-                placeholder="输入授权码: OPENCLAW-XXXX-XXXX-XXXX"
-                value={licenseCode}
-                onChange={(e) => setLicenseCode(e.target.value.toUpperCase())}
-                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
-              />
-              
-              {licenseError && (
-                <p className="text-red-500 text-sm">{licenseError}</p>
-              )}
-              
-              <button
-                onClick={handleLicenseSubmit}
-                className="w-full px-6 py-3 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors"
-              >
-                验证授权码
-              </button>
-            </div>
-          </div>
+      <div className="text-center">
+        <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-6 mb-6">
+          <p className="text-gray-700 dark:text-gray-300 mb-4">
+            本软件需要授权才能使用
+          </p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            安装服务费：<span className="text-2xl font-bold text-blue-600">¥66.66</span>
+          </p>
         </div>
-      ) : (
-        <div className="text-center">
-          <div className="bg-white dark:bg-gray-700 rounded-lg p-6 mb-6 shadow-lg">
-            <h3 className="text-lg font-bold mb-4">微信扫码支付</h3>
-            <div className="w-48 h-48 mx-auto bg-white rounded-lg flex items-center justify-center mb-4 border-2 border-gray-200 overflow-hidden">
-              {/* 微信收款码 */}
-              <img 
-                src={qrCodeImage} 
-                alt="微信支付二维码" 
-                className="w-full h-full object-cover"
-              />
+        
+        <div className="space-y-3">
+          <button
+            onClick={openPaymentPage}
+            className="w-full px-6 py-3 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            微信支付（打开网页）
+          </button>
+          
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            点击按钮将在浏览器中打开支付页面
+          </p>
+          
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-300 dark:border-gray-600"></div>
             </div>
-            <p className="text-lg font-bold text-blue-600 mb-2">¥66.66</p>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              支付完成后，输入授权码继续
-            </p>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-white dark:bg-gray-800 text-gray-500">或者</span>
+            </div>
           </div>
           
           <div className="space-y-3">
             <input
               type="text"
-              placeholder="输入授权码"
+              placeholder="输入授权码: OPENCLAW-XXXX-XXXX-XXXX"
               value={licenseCode}
               onChange={(e) => setLicenseCode(e.target.value.toUpperCase())}
               className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
@@ -393,18 +369,11 @@ function App() {
               onClick={handleLicenseSubmit}
               className="w-full px-6 py-3 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors"
             >
-              验证授权码并继续
-            </button>
-            
-            <button
-              onClick={() => setShowPayment(false)}
-              className="w-full px-6 py-3 text-gray-600 dark:text-gray-400 hover:text-gray-800"
-            >
-              返回
+              验证授权码
             </button>
           </div>
         </div>
-      )}
+      </div>
       
       {/* 公司署名 */}
       <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700 text-center">
