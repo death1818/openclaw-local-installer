@@ -211,14 +211,35 @@ function App() {
     setStep('installing')
     setInstallLog([])
     setDownloadStatus('downloading')
+    setError(null)
     
     try {
       await invoke('pull_model', { modelName: selectedModel })
       await invoke('configure_openclaw', { modelName: selectedModel })
       setStep('complete')
     } catch (err) {
-      setError(`安装失败: ${err}`)
+      const errorMsg = String(err)
+      setError(errorMsg)
       setDownloadStatus('failed')
+      setInstallLog(prev => [...prev, `❌ 错误: ${errorMsg}`])
+    }
+  }
+  
+  // 重新检测 Ollama
+  const recheckOllama = async () => {
+    setInstallLog(prev => [...prev, '正在重新检测 Ollama...'])
+    try {
+      const installed = await invoke<boolean>('check_ollama_installed')
+      if (installed) {
+        setInstallLog(prev => [...prev, '✅ Ollama 已安装，继续下载模型...'])
+        setDownloadStatus('downloading')
+        setError(null)
+        await installModel()
+      } else {
+        setInstallLog(prev => [...prev, '❌ Ollama 未检测到，请先完成安装'])
+      }
+    } catch (err) {
+      setInstallLog(prev => [...prev, `❌ 检测失败: ${err}`])
     }
   }
 
@@ -494,9 +515,37 @@ function App() {
 
       <div className="bg-gray-900 rounded-lg p-4 h-48 overflow-y-auto">
         {installLog.map((log, i) => (
-          <div key={i} className="text-green-400 text-sm font-mono">{log}</div>
+          <div key={i} className="text-green-400 text-sm font-mono whitespace-pre-wrap">{log}</div>
         ))}
       </div>
+      
+      {downloadStatus === 'failed' && (
+        <div className="mt-4 space-y-3">
+          <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-300 text-sm">
+            {error}
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={recheckOllama}
+              className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+            >
+              重新检测 Ollama
+            </button>
+            <button
+              onClick={() => open('https://ollama.com/download')}
+              className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
+            >
+              打开 Ollama 官网
+            </button>
+          </div>
+          <button
+            onClick={installModel}
+            className="w-full px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
+          >
+            重试安装
+          </button>
+        </div>
+      )}
     </div>
   )
 

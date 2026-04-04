@@ -11,7 +11,7 @@ fn check_ollama_installed() -> bool {
         .unwrap_or(false)
 }
 
-/// 安装 Ollama (Windows)
+/// 安装 Ollama (Windows) - 下载并提示用户手动安装
 #[cfg(target_os = "windows")]
 fn install_ollama_windows() -> Result<(), String> {
     let download_url = "https://ollama.com/download/OllamaSetup.exe";
@@ -28,22 +28,24 @@ fn install_ollama_windows() -> Result<(), String> {
         .map_err(|e| format!("下载 Ollama 失败: {}", e))?;
     
     if !ps_output.status.success() {
-        return Err("下载 Ollama 安装程序失败".to_string());
+        return Err("下载 Ollama 安装程序失败，请手动下载: https://ollama.com/download".to_string());
     }
     
-    // 运行安装程序 (静默安装)
-    let install_output = Command::new(&installer_path)
-        .args(&["/S"])
-        .output()
-        .map_err(|e| format!("运行安装程序失败: {}", e))?;
+    // 打开安装程序让用户手动安装（Ollama 安装程序不支持静默安装）
+    let open_result = Command::new("explorer")
+        .arg(&installer_path)
+        .spawn();
     
-    // 清理安装程序
-    let _ = std::fs::remove_file(&installer_path);
+    if open_result.is_err() {
+        // 如果无法自动打开，返回路径让用户手动运行
+        return Err(format!(
+            "已下载安装程序到: {}\n请手动运行安装程序完成安装，安装完成后重新运行 OpenClaw 安装器",
+            installer_path.display()
+        ));
+    }
     
-    // 等待安装完成
-    std::thread::sleep(std::time::Duration::from_secs(5));
-    
-    Ok(())
+    // 提示用户手动安装
+    return Err("已打开 Ollama 安装程序，请完成安装后重新运行 OpenClaw 安装器。安装完成后点击「重新检测」继续。".to_string());
 }
 
 /// 下载模型并报告进度
