@@ -174,6 +174,13 @@ function App() {
     }
   }
 
+  // 验证成功后自动开始硬件检测
+  useEffect(() => {
+    if (step === 'detecting') {
+      detectHardware()
+    }
+  }, [step])
+
   // 硬件检测
   const detectHardware = async () => {
     setStep('detecting')
@@ -614,7 +621,7 @@ function App() {
 
           {step === 'welcome' && renderWelcome()}
           {step === 'license' && renderLicense()}
-          {step === 'detecting' && (detectHardware(), renderDetecting())}
+          {step === 'detecting' && renderDetecting()}
           {step === 'select-model' && renderSelectModel()}
           {step === 'installing' && renderInstalling()}
           {step === 'complete' && renderComplete()}
