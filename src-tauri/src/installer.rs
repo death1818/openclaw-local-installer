@@ -205,7 +205,7 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
         
         // 等待服务启动
         app.emit("model-progress", "等待服务启动...").ok();
-        for i in 1..=20 {
+        for i in 1..=30 {
             std::thread::sleep(std::time::Duration::from_millis(500));
             
             let running = client
@@ -217,10 +217,12 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
             
             if running {
                 app.emit("model-progress", format!("✅ 服务启动成功 ({}秒)", i / 2)).ok();
+                // 额外等待 2 秒确保服务完全就绪
+                std::thread::sleep(std::time::Duration::from_secs(2));
                 break;
             }
             
-            if i == 20 {
+            if i == 30 {
                 app.emit("model-progress", "⚠️ 服务启动超时，继续尝试下载...").ok();
             }
         }
@@ -228,6 +230,7 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
     
     app.emit("model-progress", format!("执行: {} pull {}", ollama_path, model_name)).ok();
     
+    // 使用标准输出合并模式
     let mut child = Command::new(&ollama_path)
         .args(&["pull", &model_name])
         .stdout(Stdio::piped())
@@ -238,25 +241,35 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
             format!("启动下载失败: {}", e)
         })?;
     
-    // 同时读取 stdout 和 stderr
+    // 使用多线程同时读取 stdout 和 stderr
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
+    let app_clone = app.clone();
     
-    // 读取 stdout
-    if let Some(out) = stdout {
-        let reader = BufReader::new(out);
-        for line in reader.lines().flatten() {
-            app.emit("model-progress", &line).ok();
+    let stdout_thread = std::thread::spawn(move || {
+        if let Some(out) = stdout {
+            use std::io::BufRead;
+            let reader = BufReader::new(out);
+            for line in reader.lines().flatten() {
+                app_clone.emit("model-progress", &line).ok();
+            }
         }
-    }
+    });
     
-    // 读取 stderr
-    if let Some(err) = stderr {
-        let reader = BufReader::new(err);
-        for line in reader.lines().flatten() {
-            app.emit("model-progress", format!("[错误] {}", line)).ok();
+    let app_clone = app.clone();
+    let stderr_thread = std::thread::spawn(move || {
+        if let Some(err) = stderr {
+            use std::io::BufRead;
+            let reader = BufReader::new(err);
+            for line in reader.lines().flatten() {
+                app_clone.emit("model-progress", format!("[stderr] {}", line)).ok();
+            }
         }
-    }
+    });
+    
+    // 等待线程结束
+    stdout_thread.join().ok();
+    stderr_thread.join().ok();
     
     let status = child.wait().map_err(|e| {
         app.emit("model-progress", format!("等待进程失败: {}", e)).ok();
