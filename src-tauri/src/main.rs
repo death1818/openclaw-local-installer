@@ -8,6 +8,26 @@ mod download;
 
 use tauri::Manager;
 
+// 从子模块导入 Tauri 命令
+use hardware::detect_hardware;
+use installer::{
+    get_recommended_models,
+    check_ollama_installed,
+    install_ollama,
+    pull_model,
+    configure_openclaw,
+    check_openclaw_installed,
+    install_openclaw,
+};
+use models::{
+    list_models,
+    get_model_info,
+    delete_model,
+    stop_running_model,
+    check_model_running,
+};
+use download::cancel_model_download;
+
 fn main() {
     // 初始化日志
     env_logger::Builder::from_default_env()
@@ -37,4 +57,3 @@ fn main() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-

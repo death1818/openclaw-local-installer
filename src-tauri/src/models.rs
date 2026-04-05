@@ -17,7 +17,8 @@ pub struct ModelDetails {
 }
 
 /// 获取已安装的模型列表
-pub async fn list_installed_models() -> Result<Vec<InstalledModel>, String> {
+#[tauri::command]
+pub async fn list_models() -> Result<Vec<InstalledModel>, String> {
     let output = Command::new("ollama")
         .args(&["list"])
         .output()
@@ -46,7 +47,8 @@ pub async fn list_installed_models() -> Result<Vec<InstalledModel>, String> {
 }
 
 /// 获取模型详细信息
-pub async fn get_model_details(model_name: String) -> Result<ModelDetails, String> {
+#[tauri::command]
+pub async fn get_model_info(model_name: String) -> Result<ModelDetails, String> {
     let output = Command::new("ollama")
         .args(&["show", &model_name, "--modelfile"])
         .output()
@@ -88,6 +90,7 @@ pub async fn get_model_details(model_name: String) -> Result<ModelDetails, Strin
 }
 
 /// 删除模型
+#[tauri::command]
 pub async fn delete_model(model_name: String) -> Result<(), String> {
     let output = Command::new("ollama")
         .args(&["rm", &model_name])
@@ -103,7 +106,8 @@ pub async fn delete_model(model_name: String) -> Result<(), String> {
 }
 
 /// 停止正在运行的模型
-pub async fn stop_model(model_name: String) -> Result<(), String> {
+#[tauri::command]
+pub async fn stop_running_model(model_name: String) -> Result<(), String> {
     let output = Command::new("ollama")
         .args(&["stop", &model_name])
         .output()
@@ -118,7 +122,8 @@ pub async fn stop_model(model_name: String) -> Result<(), String> {
 }
 
 /// 检查模型是否正在运行
-pub async fn is_model_running(model_name: String) -> Result<bool, String> {
+#[tauri::command]
+pub async fn check_model_running(model_name: String) -> Result<bool, String> {
     let output = Command::new("ollama")
         .args(&["ps"])
         .output()

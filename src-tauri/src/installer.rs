@@ -17,7 +17,8 @@ pub struct ModelRecommendation {
 }
 
 // 模型推荐表
-pub fn get_recommended_models(vram_gb: f64, ram_gb: f64) -> Vec<ModelRecommendation> {
+#[tauri::command]
+pub async fn get_recommended_models(vram_gb: f64, ram_gb: f64) -> Vec<ModelRecommendation> {
     let mut models = vec![
         ModelRecommendation {
             name: "phi-3.5:3.8b".to_string(),
@@ -145,7 +146,8 @@ pub fn get_recommended_models(vram_gb: f64, ram_gb: f64) -> Vec<ModelRecommendat
 }
 
 // 检查 Ollama 是否已安装
-pub async fn check_ollama_installed() -> Result<bool, Box<dyn std::error::Error>> {
+#[tauri::command]
+pub async fn check_ollama_installed() -> Result<bool, String> {
     log::info!("开始检测 Ollama 安装状态...");
     
     // 方法1: 检测 Ollama API 是否响应（最可靠）
@@ -155,7 +157,7 @@ pub async fn check_ollama_installed() -> Result<bool, Box<dyn std::error::Error>
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(3))
         .danger_accept_invalid_certs(true)
-        .build()?;
+        .build().map_err(|e| e.to_string())?;
     
     match client.get("http://127.0.0.1:11434/api/version").send().await {
         Ok(resp) => {
@@ -255,7 +257,8 @@ pub async fn check_ollama_installed() -> Result<bool, Box<dyn std::error::Error>
 }
 
 // 安装 Ollama
-pub async fn install_ollama(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+#[tauri::command]
+pub async fn install_ollama(app: tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         use std::path::PathBuf;
@@ -274,10 +277,10 @@ pub async fn install_ollama(app: tauri::AppHandle) -> Result<(), Box<dyn std::er
                 "-Command",
                 &format!("Invoke-WebRequest -Uri '{}' -OutFile '{}'", download_url, installer_path.display()),
             ])
-            .output()?;
+            .output().map_err(|e| e.to_string())?;
         
         if !ps_output.status.success() {
-            return Err("下载 Ollama 失败".into());
+            return Err("下载 Ollama 失败".to_string());
         }
         
         let _ = app.emit("install-progress", "正在安装 Ollama...");
@@ -285,10 +288,10 @@ pub async fn install_ollama(app: tauri::AppHandle) -> Result<(), Box<dyn std::er
         // 运行安装程序
         let install_output = Command::new(&installer_path)
             .args(&["/S"])  // 静默安装
-            .output()?;
+            .output().map_err(|e| e.to_string())?;
         
         if !install_output.status.success() {
-            return Err("安装 Ollama 失败".into());
+            return Err("安装 Ollama 失败".to_string());
         }
         
         // 清理安装程序
@@ -305,10 +308,10 @@ pub async fn install_ollama(app: tauri::AppHandle) -> Result<(), Box<dyn std::er
         let output = Command::new("sh")
             .arg("-c")
             .arg("curl -fsSL https://ollama.com/install.sh | sh")
-            .output()?;
+            .output().map_err(|e| e.to_string())?;
         
         if !output.status.success() {
-            return Err("安装 Ollama 失败".into());
+            return Err("安装 Ollama 失败".to_string());
         }
     }
     
@@ -316,10 +319,11 @@ pub async fn install_ollama(app: tauri::AppHandle) -> Result<(), Box<dyn std::er
 }
 
 // 下载模型
+#[tauri::command]
 pub async fn pull_model(
     model_name: String,
     app: tauri::AppHandle,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), String> {
     use std::io::{BufRead, BufReader};
     use std::process::{Command, Stdio};
     
@@ -329,9 +333,9 @@ pub async fn pull_model(
         .args(&["pull", &model_name])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn()?;
+        .spawn().map_err(|e| e.to_string())?;
     
-    let stdout = child.stdout.take().ok_or("无法读取输出")?;
+    let stdout = child.stdout.take().ok_or("无法读取输出".to_string())?;
     let reader = BufReader::new(stdout);
     
     for line in reader.lines() {
@@ -340,10 +344,10 @@ pub async fn pull_model(
         }
     }
     
-    let status = child.wait()?;
+    let status = child.wait().map_err(|e| e.to_string())?;
     
     if !status.success() {
-        return Err("下载模型失败".into());
+        return Err("下载模型失败".to_string());
     }
     
     let _ = app.emit("model-progress", "模型下载完成".to_string());
@@ -352,7 +356,8 @@ pub async fn pull_model(
 }
 
 // 检查 OpenClaw 是否已安装
-pub async fn check_openclaw_installed() -> Result<bool, Box<dyn std::error::Error>> {
+#[tauri::command]
+pub async fn check_openclaw_installed() -> Result<bool, String> {
     let output = Command::new("openclaw")
         .arg("--version")
         .output();
@@ -361,7 +366,8 @@ pub async fn check_openclaw_installed() -> Result<bool, Box<dyn std::error::Erro
 }
 
 // 安装 OpenClaw
-pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+#[tauri::command]
+pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), String> {
     let _ = app.emit("install-progress", "正在安装 OpenClaw...");
     
     #[cfg(target_os = "windows")]
@@ -382,18 +388,18 @@ pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), Box<dyn std::
                     "-Command",
                     &format!("Invoke-WebRequest -Uri '{}' -OutFile '{}'", node_url, installer_path.display()),
                 ])
-                .output()?;
+                .output().map_err(|e| e.to_string())?;
             
             if !ps_output.status.success() {
-                return Err("下载 Node.js 失败".into());
+                return Err("下载 Node.js 失败".to_string());
             }
             
             let install_output = Command::new("msiexec")
                 .args(&["/i", &installer_path.display().to_string(), "/quiet", "/norestart"])
-                .output()?;
+                .output().map_err(|e| e.to_string())?;
             
             if !install_output.status.success() {
-                return Err("安装 Node.js 失败".into());
+                return Err("安装 Node.js 失败".to_string());
             }
             
             let _ = std::fs::remove_file(&installer_path);
@@ -404,10 +410,10 @@ pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), Box<dyn std::
         
         let npm_output = Command::new("npm")
             .args(&["install", "-g", "openclaw@latest"])
-            .output()?;
+            .output().map_err(|e| e.to_string())?;
         
         if !npm_output.status.success() {
-            return Err("安装 OpenClaw 失败".into());
+            return Err("安装 OpenClaw 失败".to_string());
         }
     }
     
@@ -417,10 +423,10 @@ pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), Box<dyn std::
         let output = Command::new("sh")
             .arg("-c")
             .arg("curl -fsSL https://openclaw.ai/install.sh | sh")
-            .output()?;
+            .output().map_err(|e| e.to_string())?;
         
         if !output.status.success() {
-            return Err("安装 OpenClaw 失败".into());
+            return Err("安装 OpenClaw 失败".to_string());
         }
     }
     
@@ -430,12 +436,13 @@ pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), Box<dyn std::
 }
 
 // 配置 OpenClaw 使用本地模型
-pub async fn configure_openclaw(model_name: String) -> Result<String, Box<dyn std::error::Error>> {
+#[tauri::command]
+pub async fn configure_openclaw(model_name: String) -> Result<String, String> {
     let config_dir = dirs::config_dir()
-        .ok_or("无法找到配置目录")?
+        .ok_or("无法找到配置目录".to_string())?
         .join("openclaw");
     
-    fs::create_dir_all(&config_dir).await?;
+    fs::create_dir_all(&config_dir).await.map_err(|e| e.to_string())?;
     
     let config_path = config_dir.join("openclaw.json");
     
@@ -459,9 +466,9 @@ pub async fn configure_openclaw(model_name: String) -> Result<String, Box<dyn st
         }
     });
     
-    let config_str = serde_json::to_string_pretty(&config)?;
-    let mut file = fs::File::create(&config_path).await?;
-    file.write_all(config_str.as_bytes()).await?;
+    let config_str = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+    let mut file = fs::File::create(&config_path).await.map_err(|e| e.to_string())?;
+    file.write_all(config_str.as_bytes()).await.map_err(|e| e.to_string())?;
     
     Ok(config_path.display().to_string())
 }

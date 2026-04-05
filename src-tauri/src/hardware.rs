@@ -248,7 +248,8 @@ async fn detect_nvidia_gpus() -> Result<Vec<GpuInfo>, Box<dyn std::error::Error>
 }
 
 // ============== 主检测函数 ==============
-pub async fn detect_hardware() -> Result<HardwareInfo, Box<dyn std::error::Error>> {
+#[tauri::command]
+pub async fn detect_hardware() -> Result<HardwareInfo, String> {
     // 使用 new() 而非 new_all() 避免栈溢出（特别是在 AppImage 环境下）
     let mut sys = System::new();
     sys.refresh_cpu_all();
@@ -265,7 +266,7 @@ pub async fn detect_hardware() -> Result<HardwareInfo, Box<dyn std::error::Error
     let ram_gb = ram_bytes as f64 / 1024.0 / 1024.0 / 1024.0;
     
     // GPU 信息
-    let gpus = detect_nvidia_gpus().await.unwrap_or_default();
+    let gpus = detect_nvidia_gpus().await.map_err(|e| e.to_string())?;
     let has_nvidia = gpus.iter().any(|g| g.vendor == "NVIDIA");
     let total_vram_gb = gpus.iter().map(|g| g.vram_gb).sum();
     

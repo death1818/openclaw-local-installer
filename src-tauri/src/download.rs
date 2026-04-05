@@ -204,7 +204,8 @@ pub struct DownloadProgress {
 }
 
 /// 取消模型下载
-pub async fn cancel_download(model_name: String) -> Result<(), String> {
+#[tauri::command]
+pub async fn cancel_model_download(model_name: String) -> Result<(), String> {
     // 找到 ollama pull 进程并终止
     #[cfg(target_os = "windows")]
     {
