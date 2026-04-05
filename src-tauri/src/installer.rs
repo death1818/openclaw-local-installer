@@ -185,21 +185,16 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
     } else {
         app.emit("model-progress", "Ollama 服务未运行，正在启动...").ok();
         
-        let ollama_dir = std::path::Path::new(&ollama_path)
-            .parent()
-            .map(|p| p.to_path_buf())
-            .unwrap_or_default();
+        // 使用 cmd /c 启动 ollama serve（后台运行）
+        let serve_cmd = format!("\"{}\" serve", ollama_path);
         
-        // 启动 ollama serve（后台运行）
         #[cfg(target_os = "windows")]
         {
             use std::os::windows::process::CommandExt;
             const CREATE_NO_WINDOW: u32 = 0x08000000;
             
-            let _ = std::process::Command::new(&ollama_path)
-                .arg("serve")
-                .current_dir(&ollama_dir)
-                .envs(std::env::vars())
+            let _ = std::process::Command::new("cmd")
+                .args(&["/c", &serve_cmd])
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn();
         }
@@ -208,8 +203,6 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
         {
             let _ = std::process::Command::new(&ollama_path)
                 .arg("serve")
-                .current_dir(&ollama_dir)
-                .envs(std::env::vars())
                 .spawn();
         }
         
@@ -239,17 +232,12 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
     
     app.emit("model-progress", format!("执行: {} pull {}", ollama_path, model_name)).ok();
     
-    // 获取工作目录
-    let ollama_dir = std::path::Path::new(&ollama_path)
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_default();
+    // 使用 cmd /c 执行命令，确保环境一致
+    let cmd_command = format!("\"{}\" pull {}", ollama_path, model_name);
+    app.emit("model-progress", format!("命令: cmd /c {}", cmd_command)).ok();
     
-    // 使用 tokio::process 异步执行
-    let mut child = Command::new(&ollama_path)
-        .args(&["pull", &model_name])
-        .current_dir(&ollama_dir)
-        .envs(std::env::vars())
+    let mut child = Command::new("cmd")
+        .args(&["/c", &cmd_command])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
