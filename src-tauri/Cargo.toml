@@ -1,6 +1,6 @@
 [package]
 name = "openclaw-local-installer"
-version = "0.3.0"
+version = "0.3.1"
 description = "OpenClaw Local Installer"
 authors = ["OpenClaw Community"]
 edition = "2021"
@@ -21,6 +21,8 @@ dirs = "6"
 thiserror = "2"
 anyhow = "1"
 zip = "2"
+log = "0.4"
+env_logger = "0.11"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["winuser", "sysinfoapi"] }

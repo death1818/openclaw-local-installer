@@ -146,7 +146,14 @@ pub fn get_recommended_models(vram_gb: f64, ram_gb: f64) -> Vec<ModelRecommendat
 
 // 检查 Ollama 是否已安装
 pub async fn check_ollama_installed() -> Result<bool, Box<dyn std::error::Error>> {
-    // 尝试运行 ollama --version
+    // 方法1: 检测 Ollama API 是否响应（最可靠）
+    if let Ok(resp) = reqwest::get("http://127.0.0.1:11434/api/version").await {
+        if resp.status().is_success() {
+            return Ok(true);
+        }
+    }
+    
+    // 方法2: 尝试运行 ollama --version
     let output = Command::new("ollama")
         .arg("--version")
         .output();
@@ -160,15 +167,20 @@ pub async fn check_ollama_installed() -> Result<bool, Box<dyn std::error::Error>
     // Windows 上检查默认安装路径
     #[cfg(target_os = "windows")]
     {
-        // 检查常见安装路径
+        // 检查常见安装路径（Ollama 实际安装位置）
         let paths = vec![
             std::env::var("LOCALAPPDATA").unwrap_or_default() + "\\Programs\\Ollama\\ollama.exe",
             std::env::var("USERPROFILE").unwrap_or_default() + "\\AppData\\Local\\Programs\\Ollama\\ollama.exe",
+            std::env::var("PROGRAMFILES").unwrap_or_default() + "\\Ollama\\ollama.exe",
+            std::env::var("PROGRAMFILES(X86)").unwrap_or_default() + "\\Ollama\\ollama.exe",
+            "C:\\Program Files\\Ollama\\ollama.exe".to_string(),
+            "C:\\Program Files (x86)\\Ollama\\ollama.exe".to_string(),
             "C:\\Users\\Default\\AppData\\Local\\Programs\\Ollama\\ollama.exe".to_string(),
         ];
         
         for path in paths {
             if std::path::Path::new(&path).exists() {
+                log::info!("找到 Ollama 路径: {}", path);
                 // 尝试运行
                 if let Ok(o) = Command::new(&path).arg("--version").output() {
                     if o.status.success() {
@@ -183,12 +195,27 @@ pub async fn check_ollama_installed() -> Result<bool, Box<dyn std::error::Error>
             if where_output.status.success() {
                 let stdout = String::from_utf8_lossy(&where_output.stdout);
                 for line in stdout.lines() {
-                    if let Ok(o) = Command::new(line.trim()).arg("--version").output() {
-                        if o.status.success() {
-                            return Ok(true);
+                    let trimmed = line.trim();
+                    if !trimmed.is_empty() && std::path::Path::new(trimmed).exists() {
+                        if let Ok(o) = Command::new(trimmed).arg("--version").output() {
+                            if o.status.success() {
+                                return Ok(true);
+                            }
                         }
                     }
                 }
+            }
+        }
+        
+        // 检查 Ollama 服务进程是否运行
+        if let Ok(tasklist) = Command::new("tasklist")
+            .args(&["/FI", "IMAGENAME eq ollama.exe"])
+            .output() 
+        {
+            let output_str = String::from_utf8_lossy(&tasklist.stdout);
+            if output_str.contains("ollama.exe") {
+                log::info!("检测到 Ollama 进程正在运行");
+                return Ok(true);
             }
         }
     }
