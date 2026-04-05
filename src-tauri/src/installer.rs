@@ -232,12 +232,21 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
     
     app.emit("model-progress", format!("执行: {} pull {}", ollama_path, model_name)).ok();
     
-    // 使用 cmd /c 执行命令，确保环境一致
-    let cmd_command = format!("\"{}\" pull {}", ollama_path, model_name);
-    app.emit("model-progress", format!("命令: cmd /c {}", cmd_command)).ok();
+    // 创建批处理文件执行命令
+    let temp_dir = std::env::temp_dir();
+    let bat_path = temp_dir.join("ollama_pull.bat");
+    let bat_content = format!("\"{}\" pull {}\n", ollama_path, model_name);
+    
+    app.emit("model-progress", format!("创建批处理: {:?}", bat_path)).ok();
+    
+    // 写入批处理文件
+    std::fs::write(&bat_path, &bat_content).map_err(|e| {
+        app.emit("model-progress", format!("创建批处理失败: {}", e)).ok();
+        format!("创建批处理失败: {}", e)
+    })?;
     
     let mut child = Command::new("cmd")
-        .args(&["/c", &cmd_command])
+        .args(&["/c", bat_path.to_str().unwrap()])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
