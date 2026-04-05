@@ -171,10 +171,14 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
     
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(3))
-        .build().ok();
+        .build()
+        .map_err(|e| e.to_string())?;
     
-    let service_running = client.as_ref()
-        .map(|c| c.get("http://127.0.0.1:11434/api/version").send().ok().map(|r| r.status().is_success()).unwrap_or(false))
+    let service_running = client
+        .get("http://127.0.0.1:11434/api/version")
+        .send()
+        .await
+        .map(|r| r.status().is_success())
         .unwrap_or(false);
     
     if service_running {
@@ -204,11 +208,16 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
         for i in 1..=20 {
             std::thread::sleep(std::time::Duration::from_millis(500));
             
-            if let Some(ref c) = client {
-                if c.get("http://127.0.0.1:11434/api/version").send().ok().map(|r| r.status().is_success()).unwrap_or(false) {
-                    app.emit("model-progress", format!("✅ 服务启动成功 ({}秒)", i / 2)).ok();
-                    break;
-                }
+            let running = client
+                .get("http://127.0.0.1:11434/api/version")
+                .send()
+                .await
+                .map(|r| r.status().is_success())
+                .unwrap_or(false);
+            
+            if running {
+                app.emit("model-progress", format!("✅ 服务启动成功 ({}秒)", i / 2)).ok();
+                break;
             }
             
             if i == 20 {
