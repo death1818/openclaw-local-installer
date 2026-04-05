@@ -94,7 +94,6 @@ pub async fn get_recommended_models(vram_gb: f64, ram_gb: f64) -> Vec<ModelRecom
 // 检查 Ollama 是否已安装
 #[tauri::command]
 pub async fn check_ollama_installed() -> Result<bool, String> {
-    // 检查 API 是否响应
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(3))
         .build().map_err(|e| e.to_string())?;
@@ -145,8 +144,8 @@ pub async fn install_ollama(app: tauri::AppHandle) -> Result<(), String> {
 // 下载模型
 #[tauri::command]
 pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(), String> {
-    use std::io::{BufRead, BufReader};
-    use std::process::{Command, Stdio};
+    use tokio::process::Command;
+    use tokio::io::{AsyncBufReadExt, BufReader};
     
     app.emit("model-progress", "=== 开始下载模型 ===").ok();
     app.emit("model-progress", format!("目标模型: {}", model_name)).ok();
@@ -186,21 +185,18 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
     } else {
         app.emit("model-progress", "Ollama 服务未运行，正在启动...").ok();
         
-        // 获取 ollama.exe 所在目录
         let ollama_dir = std::path::Path::new(&ollama_path)
             .parent()
             .map(|p| p.to_path_buf())
             .unwrap_or_default();
         
-        app.emit("model-progress", format!("Ollama 目录: {:?}", ollama_dir)).ok();
-        
-        // 启动 ollama serve
+        // 启动 ollama serve（后台运行）
         #[cfg(target_os = "windows")]
         {
             use std::os::windows::process::CommandExt;
             const CREATE_NO_WINDOW: u32 = 0x08000000;
             
-            let _ = Command::new(&ollama_path)
+            let _ = std::process::Command::new(&ollama_path)
                 .arg("serve")
                 .current_dir(&ollama_dir)
                 .envs(std::env::vars())
@@ -210,7 +206,7 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
         
         #[cfg(not(target_os = "windows"))]
         {
-            let _ = Command::new(&ollama_path)
+            let _ = std::process::Command::new(&ollama_path)
                 .arg("serve")
                 .current_dir(&ollama_dir)
                 .envs(std::env::vars())
@@ -220,7 +216,7 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
         // 等待服务启动
         app.emit("model-progress", "等待服务启动...").ok();
         for i in 1..=30 {
-            std::thread::sleep(std::time::Duration::from_millis(500));
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             
             let running = client
                 .get("http://127.0.0.1:11434/api/version")
@@ -231,8 +227,7 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
             
             if running {
                 app.emit("model-progress", format!("✅ 服务启动成功 ({}秒)", i / 2)).ok();
-                // 额外等待 2 秒确保服务完全就绪
-                std::thread::sleep(std::time::Duration::from_secs(2));
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 break;
             }
             
@@ -244,51 +239,66 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
     
     app.emit("model-progress", format!("执行: {} pull {}", ollama_path, model_name)).ok();
     
-    // 获取 ollama.exe 所在目录作为工作目录
+    // 获取工作目录
     let ollama_dir = std::path::Path::new(&ollama_path)
         .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or_default();
     
-    app.emit("model-progress", format!("工作目录: {:?}", ollama_dir)).ok();
-    
-    // 使用 spawn + wait_with_output，确保进程完整执行
+    // 使用 tokio::process 异步执行
     let mut child = Command::new(&ollama_path)
         .args(&["pull", &model_name])
         .current_dir(&ollama_dir)
         .envs(std::env::vars())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| {
             app.emit("model-progress", format!("启动失败: {}", e)).ok();
             format!("启动失败: {}", e)
         })?;
     
-    app.emit("model-progress", "等待模型下载完成...".to_string()).ok();
+    app.emit("model-progress", "正在下载模型，请耐心等待...".to_string()).ok();
     
-    // 使用 wait_with_output 等待进程完成并获取输出
-    let output = child.wait_with_output().map_err(|e| {
+    // 异步读取 stdout
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let app_stdout = app.clone();
+    let app_stderr = app.clone();
+    
+    let stdout_task = tokio::spawn(async move {
+        if let Some(out) = stdout {
+            let reader = BufReader::new(out);
+            let mut lines = reader.lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                app_stdout.emit("model-progress", &line).ok();
+            }
+        }
+    });
+    
+    let stderr_task = tokio::spawn(async move {
+        if let Some(err) = stderr {
+            let reader = BufReader::new(err);
+            let mut lines = reader.lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                app_stderr.emit("model-progress", format!("[stderr] {}", line)).ok();
+            }
+        }
+    });
+    
+    // 等待进程完成
+    let status = child.wait().await.map_err(|e| {
         app.emit("model-progress", format!("等待进程失败: {}", e)).ok();
         format!("等待进程失败: {}", e)
     })?;
     
-    // 输出 stdout
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
-        app.emit("model-progress", line).ok();
-    }
+    // 等待输出任务完成
+    let _ = stdout_task.await;
+    let _ = stderr_task.await;
     
-    // 输出 stderr
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    for line in stderr.lines() {
-        app.emit("model-progress", format!("[stderr] {}", line)).ok();
-    }
-    
-    if !output.status.success() {
-        let code = output.status.code().unwrap_or(-1);
+    if !status.success() {
+        let code = status.code().unwrap_or(-1);
         app.emit("model-progress", format!("❌ 下载模型失败，退出码: {}", code)).ok();
-        app.emit("model-progress", "可能原因：网络问题、模型名称错误、或 Ollama 服务异常".to_string()).ok();
         return Err(format!("下载模型失败，退出码: {}", code));
     }
     
@@ -299,18 +309,14 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
 // 查找 Ollama 路径
 #[cfg(target_os = "windows")]
 fn find_ollama_path(app: &tauri::AppHandle) -> Option<String> {
-    use std::os::windows::process::CommandExt;
-    
     app.emit("model-progress", "开始查找 Ollama...").ok();
     
-    // 获取环境变量
     let local_app_data = std::env::var("LOCALAPPDATA").unwrap_or_default();
     let user_profile = std::env::var("USERPROFILE").unwrap_or_default();
     
     app.emit("model-progress", format!("LOCALAPPDATA: {}", local_app_data)).ok();
     app.emit("model-progress", format!("USERPROFILE: {}", user_profile)).ok();
     
-    // 检查默认安装路径
     let paths = vec![
         format!("{}\\Programs\\Ollama\\ollama.exe", local_app_data),
         format!("{}\\AppData\\Local\\Programs\\Ollama\\ollama.exe", user_profile),
@@ -326,7 +332,6 @@ fn find_ollama_path(app: &tauri::AppHandle) -> Option<String> {
         }
     }
     
-    // 尝试 where 命令
     app.emit("model-progress", "尝试 where ollama...").ok();
     if let Ok(output) = Command::new("where").arg("ollama").output() {
         if output.status.success() {
