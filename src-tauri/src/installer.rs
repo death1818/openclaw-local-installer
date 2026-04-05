@@ -321,48 +321,96 @@ pub async fn install_ollama(app: tauri::AppHandle) -> Result<(), String> {
 // 查找 Ollama 可执行文件路径
 #[cfg(target_os = "windows")]
 fn find_ollama_path() -> Option<String> {
-    // 先尝试直接调用
-    if Command::new("ollama").arg("--version").output().map(|o| o.status.success()).unwrap_or(false) {
+    log::info!("开始查找 Ollama 路径...");
+    
+    // 方法1: 先检查 API 是否响应（最可靠）
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .build()
+        .ok()?;
+    
+    if client.get("http://127.0.0.1:11434/api/version").send().ok().map(|r| r.status().is_success()).unwrap_or(false) {
+        log::info!("✅ API 响应正常，Ollama 服务正在运行");
+        // 返回默认路径或直接用 ollama
+        if let Ok(output) = Command::new("where").arg("ollama").output() {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                if let Some(line) = stdout.lines().next() {
+                    let trimmed = line.trim();
+                    if !trimmed.is_empty() {
+                        log::info!("where 找到: {}", trimmed);
+                        return Some(trimmed.to_string());
+                    }
+                }
+            }
+        }
+        // 即使找不到路径，API 能响应就返回默认命令
         return Some("ollama".to_string());
     }
     
-    // 检查默认安装路径
+    // 方法2: 检查默认安装路径（不需要 --version 成功）
     let paths = vec![
         std::env::var("LOCALAPPDATA").unwrap_or_default() + "\\Programs\\Ollama\\ollama.exe",
         std::env::var("USERPROFILE").unwrap_or_default() + "\\AppData\\Local\\Programs\\Ollama\\ollama.exe",
         "C:\\Users\\Default\\AppData\\Local\\Programs\\Ollama\\ollama.exe".to_string(),
+        "C:\\Program Files\\Ollama\\ollama.exe".to_string(),
     ];
     
     for path in paths {
+        log::debug!("检查路径: {}", path);
         if std::path::Path::new(&path).exists() {
-            if Command::new(&path).arg("--version").output().map(|o| o.status.success()).unwrap_or(false) {
-                return Some(path);
-            }
+            log::info!("找到 Ollama 文件: {}", path);
+            return Some(path);
         }
     }
     
-    // 尝试 where 命令
+    // 方法3: 尝试 where 命令
     if let Ok(output) = Command::new("where").arg("ollama").output() {
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             for line in stdout.lines() {
                 let trimmed = line.trim();
                 if !trimmed.is_empty() && std::path::Path::new(trimmed).exists() {
+                    log::info!("where 找到: {}", trimmed);
                     return Some(trimmed.to_string());
                 }
             }
         }
     }
     
+    // 方法4: 检查进程是否运行
+    if let Ok(tasklist) = Command::new("tasklist")
+        .args(&["/FI", "IMAGENAME eq ollama.exe", "/NH"])
+        .output() 
+    {
+        let output_str = String::from_utf8_lossy(&tasklist.stdout);
+        if output_str.contains("ollama.exe") {
+            log::info!("进程检测到 ollama.exe 正在运行");
+            return Some("ollama".to_string());
+        }
+    }
+    
+    log::warn!("❌ 所有方法都无法找到 Ollama");
     None
 }
 
 #[cfg(not(target_os = "windows"))]
 fn find_ollama_path() -> Option<String> {
+    // 非 Windows 直接用 ollama 命令
     if Command::new("ollama").arg("--version").output().map(|o| o.status.success()).unwrap_or(false) {
         Some("ollama".to_string())
     } else {
-        None
+        // 检查 API 是否响应
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(2))
+            .build()
+            .ok()?;
+        
+        if client.get("http://127.0.0.1:11434/api/version").send().ok().map(|r| r.status().is_success()).unwrap_or(false) {
+            Some("ollama".to_string())
+        } else {
+            None
+        }
     }
 }
 
