@@ -232,8 +232,29 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
     
     app.emit("model-progress", format!("执行: {} pull {}", ollama_path, model_name)).ok();
     
-    // 创建批处理文件执行命令
+    // 先测试 ollama 是否正常工作
     let temp_dir = std::env::temp_dir();
+    let test_bat = temp_dir.join("ollama_test.bat");
+    let test_content = format!(
+        "@echo off\nchcp 65001 >nul\necho 测试 Ollama 服务...\n\"{}\" list\necho.\necho 测试完成，退出码: %errorlevel%\npause\n",
+        ollama_path
+    );
+    
+    let mut test_file = vec![0xEF, 0xBB, 0xBF];
+    test_file.extend(test_content.as_bytes());
+    std::fs::write(&test_bat, &test_file).ok();
+    
+    // 执行测试
+    let test_output = std::process::Command::new("cmd")
+        .args(&["/c", test_bat.to_str().unwrap()])
+        .output();
+    
+    if let Ok(output) = test_output {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        app.emit("model-progress", format!("Ollama list 输出:\n{}", stdout)).ok();
+    }
+    
+    // 创建批处理文件执行命令
     let bat_path = temp_dir.join("ollama_pull.bat");
     
     // 获取 ollama 所在目录
@@ -244,8 +265,8 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
     
     // 批处理文件内容：添加暂停让用户能看到错误
     let bat_content = format!(
-        "@echo off\nchcp 65001 >nul\necho 正在下载模型: {}\necho 工作目录: {}\ncd /d \"{}\"\n\"{}\" pull {}\necho.\necho 退出码: %errorlevel%\nif %errorlevel% neq 0 (\n    echo 下载失败！请检查网络连接和模型名称。\n)\npause\n",
-        model_name, ollama_dir, ollama_dir, ollama_path, model_name
+        "@echo off\nchcp 65001 >nul\necho 正在下载模型: {}\necho 工作目录: {}\ncd /d \"{}\"\n\"{}\" pull {}\necho.\necho 退出码: %errorlevel%\nif %errorlevel% neq 0 (\n    echo 下载失败！请检查网络连接和模型名称。\n    echo 您可以尝试手动运行: ollama pull {}\n)\npause\n",
+        model_name, ollama_dir, ollama_dir, ollama_path, model_name, model_name
     );
     
     app.emit("model-progress", format!("批处理文件: {:?}", bat_path)).ok();
