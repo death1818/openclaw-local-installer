@@ -1,6 +1,6 @@
 [package]
 name = "openclaw-local-installer"
-version = "0.3.4"
+version = "0.3.5"
 description = "OpenClaw Local Installer"
 authors = ["OpenClaw Community"]
 edition = "2021"
