@@ -318,6 +318,54 @@ pub async fn install_ollama(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// 查找 Ollama 可执行文件路径
+#[cfg(target_os = "windows")]
+fn find_ollama_path() -> Option<String> {
+    // 先尝试直接调用
+    if Command::new("ollama").arg("--version").output().map(|o| o.status.success()).unwrap_or(false) {
+        return Some("ollama".to_string());
+    }
+    
+    // 检查默认安装路径
+    let paths = vec![
+        std::env::var("LOCALAPPDATA").unwrap_or_default() + "\\Programs\\Ollama\\ollama.exe",
+        std::env::var("USERPROFILE").unwrap_or_default() + "\\AppData\\Local\\Programs\\Ollama\\ollama.exe",
+        "C:\\Users\\Default\\AppData\\Local\\Programs\\Ollama\\ollama.exe".to_string(),
+    ];
+    
+    for path in paths {
+        if std::path::Path::new(&path).exists() {
+            if Command::new(&path).arg("--version").output().map(|o| o.status.success()).unwrap_or(false) {
+                return Some(path);
+            }
+        }
+    }
+    
+    // 尝试 where 命令
+    if let Ok(output) = Command::new("where").arg("ollama").output() {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                let trimmed = line.trim();
+                if !trimmed.is_empty() && std::path::Path::new(trimmed).exists() {
+                    return Some(trimmed.to_string());
+                }
+            }
+        }
+    }
+    
+    None
+}
+
+#[cfg(not(target_os = "windows"))]
+fn find_ollama_path() -> Option<String> {
+    if Command::new("ollama").arg("--version").output().map(|o| o.status.success()).unwrap_or(false) {
+        Some("ollama".to_string())
+    } else {
+        None
+    }
+}
+
 // 下载模型
 #[tauri::command]
 pub async fn pull_model(
@@ -329,25 +377,32 @@ pub async fn pull_model(
     
     let _ = app.emit("model-progress", format!("正在下载模型: {}", model_name));
     
-    let mut child = Command::new("ollama")
+    // 查找 ollama 路径
+    let ollama_path = find_ollama_path()
+        .ok_or("找不到 Ollama，请确保已安装并运行 Ollama 服务".to_string())?;
+    
+    log::info!("使用 Ollama 路径: {}", ollama_path);
+    
+    let mut child = Command::new(&ollama_path)
         .args(&["pull", &model_name])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn().map_err(|e| e.to_string())?;
+        .spawn().map_err(|e| format!("启动下载失败: {}。Ollama 路径: {}", e, ollama_path))?;
     
     let stdout = child.stdout.take().ok_or("无法读取输出".to_string())?;
     let reader = BufReader::new(stdout);
     
     for line in reader.lines() {
         if let Ok(line) = line {
-            let _ = app.emit("model-progress", line);
+            let _ = app.emit("model-progress", line.clone());
+            log::info!("下载进度: {}", line);
         }
     }
     
-    let status = child.wait().map_err(|e| e.to_string())?;
+    let status = child.wait().map_err(|e| format!("等待进程失败: {}", e))?;
     
     if !status.success() {
-        return Err("下载模型失败".to_string());
+        return Err("下载模型失败。请检查网络连接，确保 Ollama 服务正在运行。".to_string());
     }
     
     let _ = app.emit("model-progress", "模型下载完成".to_string());
