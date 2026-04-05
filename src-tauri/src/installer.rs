@@ -325,20 +325,6 @@ fn find_and_start_ollama() -> Option<String> {
     
     log::info!("开始查找 Ollama 路径...");
     
-    // 方法1: 先检查 API 是否响应
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(2))
-        .build()
-        .ok()?;
-    
-    if client.get("http://127.0.0.1:11434/api/version").send().ok().map(|r| r.status().is_success()).unwrap_or(false) {
-        log::info!("✅ API 响应正常，Ollama 服务正在运行");
-        return Some("ollama".to_string());
-    }
-    
-    // API 没响应，尝试找到 ollama.exe 并启动服务
-    log::info!("API 未响应，尝试找到并启动 Ollama 服务...");
-    
     // 检查默认安装路径
     let paths = vec![
         std::env::var("LOCALAPPDATA").unwrap_or_default() + "\\Programs\\Ollama\\ollama.exe",
@@ -347,11 +333,14 @@ fn find_and_start_ollama() -> Option<String> {
         "C:\\Program Files\\Ollama\\ollama.exe".to_string(),
     ];
     
+    // 首先尝试找到 ollama.exe 的完整路径
     let mut ollama_path: Option<String> = None;
     
     for path in &paths {
+        log::debug!("检查路径: {}", path);
         if std::path::Path::new(path).exists() {
             ollama_path = Some(path.clone());
+            log::info!("找到 Ollama 文件: {}", path);
             break;
         }
     }
@@ -365,15 +354,43 @@ fn find_and_start_ollama() -> Option<String> {
                     let trimmed = line.trim();
                     if !trimmed.is_empty() && std::path::Path::new(trimmed).exists() {
                         ollama_path = Some(trimmed.to_string());
+                        log::info!("where 找到: {}", trimmed);
                     }
                 }
             }
         }
     }
     
-    // 如果找到了路径，尝试启动 Ollama 服务
+    // 检查 API 是否响应
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => {
+            log::warn!("无法创建 HTTP 客户端");
+            return ollama_path;
+        }
+    };
+    
+    let api_running = client
+        .get("http://127.0.0.1:11434/api/version")
+        .send()
+        .ok()
+        .map(|r| r.status().is_success())
+        .unwrap_or(false);
+    
+    if api_running {
+        log::info!("✅ API 响应正常，Ollama 服务正在运行");
+        // 返回找到的完整路径，如果没有找到就用默认命令
+        return ollama_path.or(Some("ollama".to_string()));
+    }
+    
+    // API 没响应，尝试启动服务
+    log::info!("API 未响应，尝试启动 Ollama 服务...");
+    
     if let Some(ref path) = ollama_path {
-        log::info!("找到 Ollama: {}, 尝试启动服务...", path);
+        log::info!("使用 {} 启动服务...", path);
         
         // 启动 ollama serve（后台运行，不显示窗口）
         const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -385,7 +402,7 @@ fn find_and_start_ollama() -> Option<String> {
             log::info!("已启动 Ollama 服务，等待启动...");
             
             // 等待服务启动
-            for i in 1..=10 {
+            for i in 1..=15 {
                 std::thread::sleep(std::time::Duration::from_millis(500));
                 if client.get("http://127.0.0.1:11434/api/version").send().ok().map(|r| r.status().is_success()).unwrap_or(false) {
                     log::info!("✅ Ollama 服务启动成功 (尝试 {} 次)", i);
@@ -405,12 +422,12 @@ fn find_and_start_ollama() -> Option<String> {
         let output_str = String::from_utf8_lossy(&tasklist.stdout);
         if output_str.contains("ollama.exe") {
             log::info!("进程检测到 ollama.exe 正在运行");
-            return Some("ollama".to_string());
+            return ollama_path.or(Some("ollama".to_string()));
         }
     }
     
     log::warn!("❌ 所有方法都无法找到或启动 Ollama");
-    None
+    ollama_path
 }
 
 #[cfg(not(target_os = "windows"))]
