@@ -146,27 +146,50 @@ pub fn get_recommended_models(vram_gb: f64, ram_gb: f64) -> Vec<ModelRecommendat
 
 // 检查 Ollama 是否已安装
 pub async fn check_ollama_installed() -> Result<bool, Box<dyn std::error::Error>> {
+    log::info!("开始检测 Ollama 安装状态...");
+    
     // 方法1: 检测 Ollama API 是否响应（最可靠）
-    if let Ok(resp) = reqwest::get("http://127.0.0.1:11434/api/version").await {
-        if resp.status().is_success() {
-            return Ok(true);
+    log::info!("方法1: 检测 API 端口 http://127.0.0.1:11434/api/version");
+    
+    // 创建带超时的HTTP客户端
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .danger_accept_invalid_certs(true)
+        .build()?;
+    
+    match client.get("http://127.0.0.1:11434/api/version").send().await {
+        Ok(resp) => {
+            if resp.status().is_success() {
+                log::info!("✅ API 检测成功: Ollama 服务正在运行");
+                return Ok(true);
+            } else {
+                log::warn!("API 响应状态码: {}", resp.status());
+            }
+        }
+        Err(e) => {
+            log::warn!("API 检测失败: {}", e);
         }
     }
     
     // 方法2: 尝试运行 ollama --version
+    log::info!("方法2: 尝试运行 ollama --version");
     let output = Command::new("ollama")
         .arg("--version")
         .output();
     
     if let Ok(o) = &output {
         if o.status.success() {
+            log::info!("✅ ollama 命令检测成功");
             return Ok(true);
+        } else {
+            log::warn!("ollama 命令执行失败: {}", String::from_utf8_lossy(&o.stderr));
         }
     }
     
     // Windows 上检查默认安装路径
     #[cfg(target_os = "windows")]
     {
+        log::info!("方法3: 检查 Windows 安装路径");
         // 检查常见安装路径（Ollama 实际安装位置）
         let paths = vec![
             std::env::var("LOCALAPPDATA").unwrap_or_default() + "\\Programs\\Ollama\\ollama.exe",
@@ -179,26 +202,31 @@ pub async fn check_ollama_installed() -> Result<bool, Box<dyn std::error::Error>
         ];
         
         for path in paths {
+            log::debug!("检查路径: {}", path);
             if std::path::Path::new(&path).exists() {
-                log::info!("找到 Ollama 路径: {}", path);
+                log::info!("找到 Ollama 文件: {}", path);
                 // 尝试运行
                 if let Ok(o) = Command::new(&path).arg("--version").output() {
                     if o.status.success() {
+                        log::info!("✅ 路径检测成功: {}", path);
                         return Ok(true);
                     }
                 }
             }
         }
         
-        // 尝试通过 where 命令查找
+        // 方法4: 尝试通过 where 命令查找
+        log::info!("方法4: 使用 where 命令查找");
         if let Ok(where_output) = Command::new("where").arg("ollama").output() {
             if where_output.status.success() {
                 let stdout = String::from_utf8_lossy(&where_output.stdout);
                 for line in stdout.lines() {
                     let trimmed = line.trim();
                     if !trimmed.is_empty() && std::path::Path::new(trimmed).exists() {
+                        log::info!("where 找到: {}", trimmed);
                         if let Ok(o) = Command::new(trimmed).arg("--version").output() {
                             if o.status.success() {
+                                log::info!("✅ where 检测成功");
                                 return Ok(true);
                             }
                         }
@@ -207,20 +235,23 @@ pub async fn check_ollama_installed() -> Result<bool, Box<dyn std::error::Error>
             }
         }
         
-        // 检查 Ollama 服务进程是否运行
+        // 方法5: 检查 Ollama 服务进程是否运行
+        log::info!("方法5: 检查进程");
         if let Ok(tasklist) = Command::new("tasklist")
-            .args(&["/FI", "IMAGENAME eq ollama.exe"])
+            .args(&["/FI", "IMAGENAME eq ollama.exe", "/NH"])
             .output() 
         {
             let output_str = String::from_utf8_lossy(&tasklist.stdout);
+            log::debug!("tasklist 输出: {}", output_str);
             if output_str.contains("ollama.exe") {
-                log::info!("检测到 Ollama 进程正在运行");
+                log::info!("✅ 进程检测成功: Ollama 正在运行");
                 return Ok(true);
             }
         }
     }
     
-    Ok(output.map(|o| o.status.success()).unwrap_or(false))
+    log::warn!("❌ 所有检测方法都失败了，Ollama 未检测到");
+    Ok(false)
 }
 
 // 安装 Ollama
