@@ -238,18 +238,23 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
             format!("启动下载失败: {}", e)
         })?;
     
-    if let Some(stdout) = child.stdout.take() {
-        let reader = BufReader::new(stdout);
+    // 同时读取 stdout 和 stderr
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    
+    // 读取 stdout
+    if let Some(out) = stdout {
+        let reader = BufReader::new(out);
         for line in reader.lines().flatten() {
             app.emit("model-progress", &line).ok();
         }
     }
     
-    // 也读取错误输出
-    if let Some(stderr) = child.stderr.take() {
-        let reader = BufReader::new(stderr);
+    // 读取 stderr
+    if let Some(err) = stderr {
+        let reader = BufReader::new(err);
         for line in reader.lines().flatten() {
-            app.emit("model-progress", format!("[stderr] {}", line)).ok();
+            app.emit("model-progress", format!("[错误] {}", line)).ok();
         }
     }
     
@@ -259,8 +264,10 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
     })?;
     
     if !status.success() {
-        app.emit("model-progress", "❌ 下载模型失败").ok();
-        return Err("下载模型失败".to_string());
+        let code = status.code().unwrap_or(-1);
+        app.emit("model-progress", format!("❌ 下载模型失败，退出码: {}", code)).ok();
+        app.emit("model-progress", "可能原因：网络问题、模型名称错误、或 Ollama 服务异常".to_string()).ok();
+        return Err(format!("下载模型失败，退出码: {}", code));
     }
     
     app.emit("model-progress", "=== ✅ 模型下载完成 ===").ok();
