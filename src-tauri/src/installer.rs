@@ -235,7 +235,6 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
     // 创建批处理文件执行命令
     let temp_dir = std::env::temp_dir();
     let bat_path = temp_dir.join("ollama_pull.bat");
-    let log_path = temp_dir.join("ollama_pull.log");
     
     // 获取 ollama 所在目录
     let ollama_dir = std::path::Path::new(&ollama_path)
@@ -243,22 +242,24 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
     
-    // 批处理文件内容：切换目录、执行命令、输出日志
+    // 批处理文件内容：添加暂停让用户能看到错误
     let bat_content = format!(
-        "@echo off\ncd /d \"{}\"\n\"{}\" pull {} 2>&1\nexit /b %errorlevel%\n",
-        ollama_dir, ollama_path, model_name
+        "@echo off\nchcp 65001 >nul\necho 正在下载模型: {}\necho 工作目录: {}\ncd /d \"{}\"\n\"{}\" pull {}\necho.\necho 退出码: %errorlevel%\nif %errorlevel% neq 0 (\n    echo 下载失败！请检查网络连接和模型名称。\n)\npause\n",
+        model_name, ollama_dir, ollama_dir, ollama_path, model_name
     );
     
     app.emit("model-progress", format!("批处理文件: {:?}", bat_path)).ok();
-    app.emit("model-progress", format!("工作目录: {}", ollama_dir)).ok();
     
-    // 写入批处理文件
-    std::fs::write(&bat_path, &bat_content).map_err(|e| {
+    // 写入批处理文件（使用 UTF-8 with BOM）
+    let mut file_content = vec![0xEF, 0xBB, 0xBF]; // UTF-8 BOM
+    file_content.extend(bat_content.as_bytes());
+    
+    std::fs::write(&bat_path, &file_content).map_err(|e| {
         app.emit("model-progress", format!("创建批处理失败: {}", e)).ok();
         format!("创建批处理失败: {}", e)
     })?;
     
-    app.emit("model-progress", format!("批处理内容:\n{}", bat_content)).ok();
+    app.emit("model-progress", "批处理文件已创建，开始执行...".to_string()).ok();
     
     let mut child = Command::new("cmd")
         .args(&["/c", bat_path.to_str().unwrap()])
