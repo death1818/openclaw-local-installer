@@ -166,6 +166,57 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
         }
     };
     
+    // 检查并启动 Ollama 服务
+    app.emit("model-progress", "检查 Ollama 服务...").ok();
+    
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build().ok();
+    
+    let service_running = client.as_ref()
+        .map(|c| c.get("http://127.0.0.1:11434/api/version").send().ok().map(|r| r.status().is_success()).unwrap_or(false))
+        .unwrap_or(false);
+    
+    if service_running {
+        app.emit("model-progress", "✅ Ollama 服务已运行").ok();
+    } else {
+        app.emit("model-progress", "Ollama 服务未运行，正在启动...").ok();
+        
+        // 启动 ollama serve
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            
+            let _ = Command::new(&ollama_path)
+                .arg("serve")
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn();
+        }
+        
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = Command::new(&ollama_path).arg("serve").spawn();
+        }
+        
+        // 等待服务启动
+        app.emit("model-progress", "等待服务启动...").ok();
+        for i in 1..=20 {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            
+            if let Some(ref c) = client {
+                if c.get("http://127.0.0.1:11434/api/version").send().ok().map(|r| r.status().is_success()).unwrap_or(false) {
+                    app.emit("model-progress", format!("✅ 服务启动成功 ({}秒)", i / 2)).ok();
+                    break;
+                }
+            }
+            
+            if i == 20 {
+                app.emit("model-progress", "⚠️ 服务启动超时，继续尝试下载...").ok();
+            }
+        }
+    }
+    
     app.emit("model-progress", format!("执行: {} pull {}", ollama_path, model_name)).ok();
     
     let mut child = Command::new(&ollama_path)
@@ -173,7 +224,10 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("启动下载失败: {}", e))?;
+        .map_err(|e| {
+            app.emit("model-progress", format!("启动下载失败: {}", e)).ok();
+            format!("启动下载失败: {}", e)
+        })?;
     
     if let Some(stdout) = child.stdout.take() {
         let reader = BufReader::new(stdout);
@@ -182,14 +236,25 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
         }
     }
     
-    let status = child.wait().map_err(|e| format!("等待进程失败: {}", e))?;
+    // 也读取错误输出
+    if let Some(stderr) = child.stderr.take() {
+        let reader = BufReader::new(stderr);
+        for line in reader.lines().flatten() {
+            app.emit("model-progress", format!("[stderr] {}", line)).ok();
+        }
+    }
+    
+    let status = child.wait().map_err(|e| {
+        app.emit("model-progress", format!("等待进程失败: {}", e)).ok();
+        format!("等待进程失败: {}", e)
+    })?;
     
     if !status.success() {
-        app.emit("model-progress", "下载模型失败").ok();
+        app.emit("model-progress", "❌ 下载模型失败").ok();
         return Err("下载模型失败".to_string());
     }
     
-    app.emit("model-progress", "=== 模型下载完成 ===").ok();
+    app.emit("model-progress", "=== ✅ 模型下载完成 ===").ok();
     Ok(())
 }
 
