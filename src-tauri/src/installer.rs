@@ -186,6 +186,14 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
     } else {
         app.emit("model-progress", "Ollama 服务未运行，正在启动...").ok();
         
+        // 获取 ollama.exe 所在目录
+        let ollama_dir = std::path::Path::new(&ollama_path)
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_default();
+        
+        app.emit("model-progress", format!("Ollama 目录: {:?}", ollama_dir)).ok();
+        
         // 启动 ollama serve
         #[cfg(target_os = "windows")]
         {
@@ -194,13 +202,19 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
             
             let _ = Command::new(&ollama_path)
                 .arg("serve")
+                .current_dir(&ollama_dir)
+                .envs(std::env::vars())
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn();
         }
         
         #[cfg(not(target_os = "windows"))]
         {
-            let _ = Command::new(&ollama_path).arg("serve").spawn();
+            let _ = Command::new(&ollama_path)
+                .arg("serve")
+                .current_dir(&ollama_dir)
+                .envs(std::env::vars())
+                .spawn();
         }
         
         // 等待服务启动
@@ -230,9 +244,19 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
     
     app.emit("model-progress", format!("执行: {} pull {}", ollama_path, model_name)).ok();
     
-    // 使用标准输出合并模式
+    // 获取 ollama.exe 所在目录作为工作目录
+    let ollama_dir = std::path::Path::new(&ollama_path)
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_default();
+    
+    app.emit("model-progress", format!("工作目录: {:?}", ollama_dir)).ok();
+    
+    // 使用标准输出合并模式，继承环境变量
     let mut child = Command::new(&ollama_path)
         .args(&["pull", &model_name])
+        .current_dir(&ollama_dir)  // 设置工作目录
+        .envs(std::env::vars())     // 继承所有环境变量
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
