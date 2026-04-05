@@ -252,56 +252,41 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
     
     app.emit("model-progress", format!("工作目录: {:?}", ollama_dir)).ok();
     
-    // 使用标准输出合并模式，继承环境变量
+    // 使用 spawn + wait_with_output，确保进程完整执行
     let mut child = Command::new(&ollama_path)
         .args(&["pull", &model_name])
-        .current_dir(&ollama_dir)  // 设置工作目录
-        .envs(std::env::vars())     // 继承所有环境变量
+        .current_dir(&ollama_dir)
+        .envs(std::env::vars())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| {
-            app.emit("model-progress", format!("启动下载失败: {}", e)).ok();
-            format!("启动下载失败: {}", e)
+            app.emit("model-progress", format!("启动失败: {}", e)).ok();
+            format!("启动失败: {}", e)
         })?;
     
-    // 使用多线程同时读取 stdout 和 stderr
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
-    let app_clone = app.clone();
+    app.emit("model-progress", "等待模型下载完成...".to_string()).ok();
     
-    let stdout_thread = std::thread::spawn(move || {
-        if let Some(out) = stdout {
-            use std::io::BufRead;
-            let reader = BufReader::new(out);
-            for line in reader.lines().flatten() {
-                app_clone.emit("model-progress", &line).ok();
-            }
-        }
-    });
-    
-    let app_clone = app.clone();
-    let stderr_thread = std::thread::spawn(move || {
-        if let Some(err) = stderr {
-            use std::io::BufRead;
-            let reader = BufReader::new(err);
-            for line in reader.lines().flatten() {
-                app_clone.emit("model-progress", format!("[stderr] {}", line)).ok();
-            }
-        }
-    });
-    
-    // 等待线程结束
-    stdout_thread.join().ok();
-    stderr_thread.join().ok();
-    
-    let status = child.wait().map_err(|e| {
+    // 使用 wait_with_output 等待进程完成并获取输出
+    let output = child.wait_with_output().map_err(|e| {
         app.emit("model-progress", format!("等待进程失败: {}", e)).ok();
         format!("等待进程失败: {}", e)
     })?;
     
-    if !status.success() {
-        let code = status.code().unwrap_or(-1);
+    // 输出 stdout
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        app.emit("model-progress", line).ok();
+    }
+    
+    // 输出 stderr
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    for line in stderr.lines() {
+        app.emit("model-progress", format!("[stderr] {}", line)).ok();
+    }
+    
+    if !output.status.success() {
+        let code = output.status.code().unwrap_or(-1);
         app.emit("model-progress", format!("❌ 下载模型失败，退出码: {}", code)).ok();
         app.emit("model-progress", "可能原因：网络问题、模型名称错误、或 Ollama 服务异常".to_string()).ok();
         return Err(format!("下载模型失败，退出码: {}", code));
