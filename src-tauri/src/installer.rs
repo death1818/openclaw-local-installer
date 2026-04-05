@@ -141,21 +141,18 @@ pub async fn install_ollama(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-// 下载模型
+// 下载模型 - 使用 Ollama REST API
 #[tauri::command]
 pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(), String> {
-    use tokio::process::Command;
-    use tokio::io::{AsyncBufReadExt, BufReader};
-    
     app.emit("model-progress", "=== 开始下载模型 ===").ok();
     app.emit("model-progress", format!("目标模型: {}", model_name)).ok();
     
-    // 查找 Ollama 路径
+    // 查找并启动 Ollama 服务
     let ollama_path = find_ollama_path(&app);
     
     let ollama_path = match ollama_path {
         Some(path) => {
-            app.emit("model-progress", format!("使用 Ollama 路径: {}", path)).ok();
+            app.emit("model-progress", format!("Ollama 路径: {}", path)).ok();
             path
         }
         None => {
@@ -165,7 +162,7 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
         }
     };
     
-    // 检查并启动 Ollama 服务
+    // 检查 Ollama 服务是否运行
     app.emit("model-progress", "检查 Ollama 服务...").ok();
     
     let client = reqwest::Client::builder()
@@ -180,34 +177,27 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
         .map(|r| r.status().is_success())
         .unwrap_or(false);
     
-    if service_running {
-        app.emit("model-progress", "✅ Ollama 服务已运行").ok();
-    } else {
+    if !service_running {
         app.emit("model-progress", "Ollama 服务未运行，正在启动...").ok();
         
-        // 使用 cmd /c 启动 ollama serve（后台运行）
-        let serve_cmd = format!("\"{}\" serve", ollama_path);
-        
+        // 启动 ollama serve
         #[cfg(target_os = "windows")]
         {
             use std::os::windows::process::CommandExt;
             const CREATE_NO_WINDOW: u32 = 0x08000000;
             
-            let _ = std::process::Command::new("cmd")
-                .args(&["/c", &serve_cmd])
+            let _ = Command::new(&ollama_path)
+                .arg("serve")
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn();
         }
         
         #[cfg(not(target_os = "windows"))]
         {
-            let _ = std::process::Command::new(&ollama_path)
-                .arg("serve")
-                .spawn();
+            let _ = Command::new(&ollama_path).arg("serve").spawn();
         }
         
         // 等待服务启动
-        app.emit("model-progress", "等待服务启动...").ok();
         for i in 1..=30 {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             
@@ -223,94 +213,70 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 break;
             }
-            
-            if i == 30 {
-                app.emit("model-progress", "⚠️ 服务启动超时，继续尝试下载...").ok();
-            }
         }
+    } else {
+        app.emit("model-progress", "✅ Ollama 服务已运行").ok();
     }
     
-    app.emit("model-progress", format!("执行: {} pull {}", ollama_path, model_name)).ok();
+    // 使用 Ollama REST API 下载模型
+    app.emit("model-progress", "使用 API 下载模型...".to_string()).ok();
     
-    // 创建批处理文件执行命令
-    let temp_dir = std::env::temp_dir();
-    let bat_path = temp_dir.join("ollama_pull.bat");
+    let api_client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3600))
+        .build()
+        .map_err(|e| e.to_string())?;
     
-    // 获取 ollama 所在目录
-    let ollama_dir = std::path::Path::new(&ollama_path)
-        .parent()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
-    
-    // 批处理文件内容：先测试服务，再下载模型
-    let bat_content = format!(
-        "@echo off\nchcp 65001 >nul\necho ========================================\necho 测试 Ollama 服务状态\necho ========================================\n\"{}\" list\necho.\necho ========================================\necho 开始下载模型: {}\necho ========================================\n\"{}\" pull {}\necho.\necho ========================================\necho 退出码: %errorlevel%\nif %errorlevel% neq 0 (\n    echo 下载失败！\n    echo 可能原因：\n    echo 1. 模型名称错误\n    echo 2. 网络连接问题\n    echo 3. Ollama 服务未正常运行\n    echo.\n    echo 请尝试手动运行: ollama pull {}\n) else (\n    echo 下载成功！\n)\necho ========================================\npause\n",
-        ollama_path, model_name, ollama_path, model_name, model_name
-    );
-    
-    // 写入批处理文件（使用 UTF-8 with BOM）
-    let mut file_content = vec![0xEF, 0xBB, 0xBF]; // UTF-8 BOM
-    file_content.extend(bat_content.as_bytes());
-    
-    std::fs::write(&bat_path, &file_content).map_err(|e| {
-        app.emit("model-progress", format!("创建批处理失败: {}", e)).ok();
-        format!("创建批处理失败: {}", e)
-    })?;
-    
-    app.emit("model-progress", "开始执行...".to_string()).ok();
-    
-    let mut child = Command::new("cmd")
-        .args(&["/c", bat_path.to_str().unwrap()])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
+    let response = api_client
+        .post("http://127.0.0.1:11434/api/pull")
+        .json(&serde_json::json!({"name": model_name, "stream": true}))
+        .send()
+        .await
         .map_err(|e| {
-            app.emit("model-progress", format!("启动失败: {}", e)).ok();
-            format!("启动失败: {}", e)
+            app.emit("model-progress", format!("API 请求失败: {}", e)).ok();
+            format!("API 请求失败: {}", e)
         })?;
     
-    app.emit("model-progress", "正在下载模型，请耐心等待...".to_string()).ok();
+    if !response.status().is_success() {
+        let err = format!("API 返回错误: {}", response.status());
+        app.emit("model-progress", err.clone()).ok();
+        return Err(err);
+    }
     
-    // 异步读取 stdout
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
-    let app_stdout = app.clone();
-    let app_stderr = app.clone();
+    app.emit("model-progress", "正在下载模型...".to_string()).ok();
     
-    let stdout_task = tokio::spawn(async move {
-        if let Some(out) = stdout {
-            let reader = BufReader::new(out);
-            let mut lines = reader.lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                app_stdout.emit("model-progress", &line).ok();
+    // 读取流式响应
+    use futures_util::StreamExt;
+    let mut stream = response.bytes_stream();
+    
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| e.to_string())?;
+        let text = String::from_utf8_lossy(&chunk);
+        
+        for line in text.lines() {
+            if line.is_empty() { continue; }
+            
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
+                if let Some(status) = json.get("status").and_then(|s| s.as_str()) {
+                    let msg = if let Some(completed) = json.get("completed") {
+                        let total = json.get("total").and_then(|t| t.as_u64()).unwrap_or(0);
+                        let comp = completed.as_u64().unwrap_or(0);
+                        if total > 0 {
+                            let percent = (comp as f64 / total as f64 * 100.0) as u64;
+                            format!("{} - {}%", status, percent)
+                        } else {
+                            status.to_string()
+                        }
+                    } else {
+                        status.to_string()
+                    };
+                    app.emit("model-progress", msg).ok();
+                }
+                if let Some(error) = json.get("error").and_then(|e| e.as_str()) {
+                    app.emit("model-progress", format!("错误: {}", error)).ok();
+                    return Err(error.to_string());
+                }
             }
         }
-    });
-    
-    let stderr_task = tokio::spawn(async move {
-        if let Some(err) = stderr {
-            let reader = BufReader::new(err);
-            let mut lines = reader.lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                app_stderr.emit("model-progress", format!("[stderr] {}", line)).ok();
-            }
-        }
-    });
-    
-    // 等待进程完成
-    let status = child.wait().await.map_err(|e| {
-        app.emit("model-progress", format!("等待进程失败: {}", e)).ok();
-        format!("等待进程失败: {}", e)
-    })?;
-    
-    // 等待输出任务完成
-    let _ = stdout_task.await;
-    let _ = stderr_task.await;
-    
-    if !status.success() {
-        let code = status.code().unwrap_or(-1);
-        app.emit("model-progress", format!("❌ 下载模型失败，退出码: {}", code)).ok();
-        return Err(format!("下载模型失败，退出码: {}", code));
     }
     
     app.emit("model-progress", "=== ✅ 模型下载完成 ===").ok();
@@ -320,18 +286,14 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
 // 查找 Ollama 路径
 #[cfg(target_os = "windows")]
 fn find_ollama_path(app: &tauri::AppHandle) -> Option<String> {
-    app.emit("model-progress", "开始查找 Ollama...").ok();
+    app.emit("model-progress", "查找 Ollama...").ok();
     
     let local_app_data = std::env::var("LOCALAPPDATA").unwrap_or_default();
     let user_profile = std::env::var("USERPROFILE").unwrap_or_default();
     
-    app.emit("model-progress", format!("LOCALAPPDATA: {}", local_app_data)).ok();
-    app.emit("model-progress", format!("USERPROFILE: {}", user_profile)).ok();
-    
     let paths = vec![
         format!("{}\\Programs\\Ollama\\ollama.exe", local_app_data),
         format!("{}\\AppData\\Local\\Programs\\Ollama\\ollama.exe", user_profile),
-        "C:\\Users\\Default\\AppData\\Local\\Programs\\Ollama\\ollama.exe".to_string(),
         "C:\\Program Files\\Ollama\\ollama.exe".to_string(),
     ];
     
@@ -343,21 +305,19 @@ fn find_ollama_path(app: &tauri::AppHandle) -> Option<String> {
         }
     }
     
-    app.emit("model-progress", "尝试 where ollama...").ok();
+    // 尝试 where 命令
     if let Ok(output) = Command::new("where").arg("ollama").output() {
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             for line in stdout.lines() {
                 let trimmed = line.trim();
                 if !trimmed.is_empty() && std::path::Path::new(trimmed).exists() {
-                    app.emit("model-progress", format!("✅ where 找到: {}", trimmed)).ok();
                     return Some(trimmed.to_string());
                 }
             }
         }
     }
     
-    app.emit("model-progress", "❌ 未找到 Ollama").ok();
     None
 }
 
