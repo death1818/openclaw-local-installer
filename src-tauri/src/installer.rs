@@ -21,7 +21,7 @@ pub struct ModelRecommendation {
 pub async fn get_recommended_models(vram_gb: f64, ram_gb: f64) -> Vec<ModelRecommendation> {
     let mut models = vec![
         ModelRecommendation {
-            name: "phi-3.5:3.8b".to_string(),
+            name: "phi3.5:3.8b".to_string(),
             display_name: "Phi-3.5 3.8B".to_string(),
             size_gb: 2.3,
             description: "轻量级模型，适合低配电脑".to_string(),
@@ -31,7 +31,7 @@ pub async fn get_recommended_models(vram_gb: f64, ram_gb: f64) -> Vec<ModelRecom
             tags: vec!["轻量".to_string(), "快速".to_string()],
         },
         ModelRecommendation {
-            name: "llama3.2:3b".to_string(),
+            name: "llama3.2".to_string(),
             display_name: "Llama 3.2 3B".to_string(),
             size_gb: 2.0,
             description: "Meta 最新小模型，性价比高".to_string(),
@@ -41,7 +41,7 @@ pub async fn get_recommended_models(vram_gb: f64, ram_gb: f64) -> Vec<ModelRecom
             tags: vec!["轻量".to_string(), "通用".to_string()],
         },
         ModelRecommendation {
-            name: "llama3.1:8b".to_string(),
+            name: "llama3.1".to_string(),
             display_name: "Llama 3.1 8B".to_string(),
             size_gb: 4.7,
             description: "主流模型，平衡性能与质量".to_string(),
@@ -51,7 +51,7 @@ pub async fn get_recommended_models(vram_gb: f64, ram_gb: f64) -> Vec<ModelRecom
             tags: vec!["推荐".to_string(), "通用".to_string()],
         },
         ModelRecommendation {
-            name: "qwen2.5:7b".to_string(),
+            name: "qwen2.5".to_string(),
             display_name: "Qwen 2.5 7B".to_string(),
             size_gb: 4.7,
             description: "阿里通义千问，中文能力强".to_string(),
