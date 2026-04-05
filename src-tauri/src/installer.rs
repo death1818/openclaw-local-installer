@@ -320,138 +320,191 @@ pub async fn install_ollama(app: tauri::AppHandle) -> Result<(), String> {
 
 // 查找 Ollama 可执行文件路径并确保服务运行
 #[cfg(target_os = "windows")]
-fn find_and_start_ollama() -> Option<String> {
+fn find_and_start_ollama_with_log(log_fn: &dyn Fn(&str)) -> Option<String> {
     use std::os::windows::process::CommandExt;
     
+    log_fn("开始查找 Ollama...");
     log::info!("开始查找 Ollama 路径...");
     
     // 检查默认安装路径
+    let local_app_data = std::env::var("LOCALAPPDATA").unwrap_or_default();
+    let user_profile = std::env::var("USERPROFILE").unwrap_or_default();
+    
+    log_fn(&format!("LOCALAPPDATA: {}", local_app_data));
+    log_fn(&format!("USERPROFILE: {}", user_profile));
+    
     let paths = vec![
-        std::env::var("LOCALAPPDATA").unwrap_or_default() + "\\Programs\\Ollama\\ollama.exe",
-        std::env::var("USERPROFILE").unwrap_or_default() + "\\AppData\\Local\\Programs\\Ollama\\ollama.exe",
+        local_app_data.clone() + "\\Programs\\Ollama\\ollama.exe",
+        user_profile.clone() + "\\AppData\\Local\\Programs\\Ollama\\ollama.exe",
         "C:\\Users\\Default\\AppData\\Local\\Programs\\Ollama\\ollama.exe".to_string(),
         "C:\\Program Files\\Ollama\\ollama.exe".to_string(),
+        "C:\\Program Files (x86)\\Ollama\\ollama.exe".to_string(),
     ];
     
     // 首先尝试找到 ollama.exe 的完整路径
     let mut ollama_path: Option<String> = None;
     
     for path in &paths {
+        log_fn(&format!("检查路径: {}", path));
         log::debug!("检查路径: {}", path);
         if std::path::Path::new(path).exists() {
             ollama_path = Some(path.clone());
+            log_fn(&format!("✅ 找到 Ollama: {}", path));
             log::info!("找到 Ollama 文件: {}", path);
             break;
+        } else {
+            log_fn(&format!("❌ 路径不存在: {}", path));
         }
     }
     
     // 尝试 where 命令
     if ollama_path.is_none() {
+        log_fn("尝试 where ollama 命令...");
         if let Ok(output) = Command::new("where").arg("ollama").output() {
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
+                log_fn(&format!("where 输出: {}", stdout));
                 if let Some(line) = stdout.lines().next() {
                     let trimmed = line.trim();
                     if !trimmed.is_empty() && std::path::Path::new(trimmed).exists() {
                         ollama_path = Some(trimmed.to_string());
+                        log_fn(&format!("✅ where 找到: {}", trimmed));
                         log::info!("where 找到: {}", trimmed);
                     }
                 }
+            } else {
+                log_fn("where 命令执行失败");
             }
+        } else {
+            log_fn("无法执行 where 命令");
         }
     }
     
     // 检查 API 是否响应
+    log_fn("检查 Ollama API (127.0.0.1:11434)...");
     let client = match reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(2))
+        .timeout(std::time::Duration::from_secs(3))
         .build()
     {
         Ok(c) => c,
-        Err(_) => {
-            log::warn!("无法创建 HTTP 客户端");
+        Err(e) => {
+            log_fn(&format!("无法创建 HTTP 客户端: {}", e));
+            log::warn!("无法创建 HTTP 客户端: {}", e);
             return ollama_path;
         }
     };
     
-    let api_running = client
-        .get("http://127.0.0.1:11434/api/version")
-        .send()
-        .ok()
-        .map(|r| r.status().is_success())
-        .unwrap_or(false);
-    
-    if api_running {
-        log::info!("✅ API 响应正常，Ollama 服务正在运行");
-        // 返回找到的完整路径，如果没有找到就用默认命令
-        return ollama_path.or(Some("ollama".to_string()));
+    match client.get("http://127.0.0.1:11434/api/version").send() {
+        Ok(resp) => {
+            if resp.status().is_success() {
+                log_fn("✅ API 响应正常，Ollama 服务正在运行");
+                log::info!("✅ API 响应正常，Ollama 服务正在运行");
+                return ollama_path.or(Some("ollama".to_string()));
+            } else {
+                log_fn(&format!("API 响应状态码: {}", resp.status()));
+            }
+        }
+        Err(e) => {
+            log_fn(&format!("API 请求失败: {}", e));
+        }
     }
     
     // API 没响应，尝试启动服务
-    log::info!("API 未响应，尝试启动 Ollama 服务...");
+    log_fn("API 未响应，尝试启动 Ollama 服务...");
     
     if let Some(ref path) = ollama_path {
-        log::info!("使用 {} 启动服务...", path);
+        log_fn(&format!("使用 {} 启动服务...", path));
         
         // 启动 ollama serve（后台运行，不显示窗口）
         const CREATE_NO_WINDOW: u32 = 0x08000000;
-        if let Ok(_child) = Command::new(path)
+        match Command::new(path)
             .arg("serve")
             .creation_flags(CREATE_NO_WINDOW)
             .spawn()
         {
-            log::info!("已启动 Ollama 服务，等待启动...");
-            
-            // 等待服务启动
-            for i in 1..=15 {
-                std::thread::sleep(std::time::Duration::from_millis(500));
-                if client.get("http://127.0.0.1:11434/api/version").send().ok().map(|r| r.status().is_success()).unwrap_or(false) {
-                    log::info!("✅ Ollama 服务启动成功 (尝试 {} 次)", i);
-                    return Some(path.clone());
+            Ok(_child) => {
+                log_fn("已启动 Ollama 服务，等待启动...");
+                
+                // 等待服务启动
+                for i in 1..=15 {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    if client.get("http://127.0.0.1:11434/api/version").send().ok().map(|r| r.status().is_success()).unwrap_or(false) {
+                        log_fn(&format!("✅ Ollama 服务启动成功 (尝试 {} 次)", i));
+                        return Some(path.clone());
+                    }
                 }
+                
+                log_fn("Ollama 服务启动超时");
             }
-            
-            log::warn!("Ollama 服务启动超时");
+            Err(e) => {
+                log_fn(&format!("启动 Ollama 服务失败: {}", e));
+            }
         }
+    } else {
+        log_fn("未找到 ollama.exe，无法启动服务");
     }
     
     // 最后检查进程
+    log_fn("检查 ollama.exe 进程...");
     if let Ok(tasklist) = Command::new("tasklist")
         .args(&["/FI", "IMAGENAME eq ollama.exe", "/NH"])
         .output() 
     {
         let output_str = String::from_utf8_lossy(&tasklist.stdout);
+        log_fn(&format!("tasklist 输出: {}", output_str));
         if output_str.contains("ollama.exe") {
-            log::info!("进程检测到 ollama.exe 正在运行");
+            log_fn("✅ 进程检测到 ollama.exe 正在运行");
             return ollama_path.or(Some("ollama".to_string()));
         }
     }
     
+    log_fn("❌ 所有方法都无法找到或启动 Ollama");
     log::warn!("❌ 所有方法都无法找到或启动 Ollama");
     ollama_path
 }
 
 #[cfg(not(target_os = "windows"))]
-fn find_and_start_ollama() -> Option<String> {
-    // 非 Windows：检查 API，然后尝试启动服务
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(2))
-        .build()
-        .ok()?;
+fn find_and_start_ollama_with_log(log_fn: &dyn Fn(&str)) -> Option<String> {
+    log_fn("检查 Ollama API (127.0.0.1:11434)...");
     
-    if client.get("http://127.0.0.1:11434/api/version").send().ok().map(|r| r.status().is_success()).unwrap_or(false) {
-        return Some("ollama".to_string());
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            log_fn(&format!("无法创建 HTTP 客户端: {}", e));
+            return None;
+        }
+    };
+    
+    match client.get("http://127.0.0.1:11434/api/version").send() {
+        Ok(resp) => {
+            if resp.status().is_success() {
+                log_fn("✅ API 响应正常，Ollama 服务正在运行");
+                return Some("ollama".to_string());
+            } else {
+                log_fn(&format!("API 响应状态码: {}", resp.status()));
+            }
+        }
+        Err(e) => {
+            log_fn(&format!("API 请求失败: {}", e));
+        }
     }
     
     // 尝试启动服务
+    log_fn("尝试启动 Ollama 服务...");
     if Command::new("ollama").arg("serve").spawn().is_ok() {
-        for _ in 1..=10 {
+        for i in 1..=15 {
             std::thread::sleep(std::time::Duration::from_millis(500));
             if client.get("http://127.0.0.1:11434/api/version").send().ok().map(|r| r.status().is_success()).unwrap_or(false) {
+                log_fn(&format!("✅ Ollama 服务启动成功 (尝试 {} 次)", i));
                 return Some("ollama".to_string());
             }
         }
     }
     
+    log_fn("❌ 无法找到或启动 Ollama");
     None
 }
 
@@ -464,21 +517,46 @@ pub async fn pull_model(
     use std::io::{BufRead, BufReader};
     use std::process::{Command, Stdio};
     
-    let _ = app.emit("model-progress", format!("正在下载模型: {}", model_name));
+    let _ = app.emit("model-progress", "=== 开始下载模型 ===".to_string());
+    let _ = app.emit("model-progress", format!("目标模型: {}", model_name));
     
-    // 查找并启动 Ollama
-    let ollama_path = find_and_start_ollama()
-        .ok_or("找不到 Ollama，请确保已安装 Ollama。下载地址: https://ollama.com/download".to_string())?;
+    // 查找并启动 Ollama（带详细日志）
+    let ollama_path = {
+        let app_clone = app.clone();
+        find_and_start_ollama_with_log(&|msg: &str| {
+            let _ = app_clone.emit("model-progress", msg.to_string());
+        })
+    };
     
-    log::info!("使用 Ollama 路径: {}", ollama_path);
+    let ollama_path = match ollama_path {
+        Some(path) => {
+            let _ = app.emit("model-progress", format!("使用 Ollama 路径: {}", path));
+            path
+        }
+        None => {
+            let err_msg = "找不到 Ollama，请确保已安装 Ollama。\n下载地址: https://ollama.com/download";
+            let _ = app.emit("model-progress", err_msg.to_string());
+            return Err(err_msg.to_string());
+        }
+    };
+    
+    let _ = app.emit("model-progress", format!("执行命令: {} pull {}", ollama_path, model_name));
     
     let mut child = Command::new(&ollama_path)
         .args(&["pull", &model_name])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn().map_err(|e| format!("启动下载失败: {}。Ollama 路径: {}", e, ollama_path))?;
+        .spawn().map_err(|e| {
+            let err = format!("启动下载失败: {}", e);
+            let _ = app.emit("model-progress", err.clone());
+            err
+        })?;
     
-    let stdout = child.stdout.take().ok_or("无法读取输出".to_string())?;
+    let stdout = child.stdout.take().ok_or_else(|| {
+        let err = "无法读取输出".to_string();
+        let _ = app.emit("model-progress", err.clone());
+        err
+    })?;
     let reader = BufReader::new(stdout);
     
     for line in reader.lines() {
@@ -488,13 +566,19 @@ pub async fn pull_model(
         }
     }
     
-    let status = child.wait().map_err(|e| format!("等待进程失败: {}", e))?;
+    let status = child.wait().map_err(|e| {
+        let err = format!("等待进程失败: {}", e);
+        let _ = app.emit("model-progress", err.clone());
+        err
+    })?;
     
     if !status.success() {
-        return Err("下载模型失败。请检查网络连接，确保 Ollama 服务正在运行。".to_string());
+        let err = "下载模型失败。请检查网络连接，确保 Ollama 服务正在运行。".to_string();
+        let _ = app.emit("model-progress", err.clone());
+        return Err(err);
     }
     
-    let _ = app.emit("model-progress", "模型下载完成".to_string());
+    let _ = app.emit("model-progress", "=== 模型下载完成 ===".to_string());
     
     Ok(())
 }
