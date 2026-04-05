@@ -235,15 +235,30 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
     // 创建批处理文件执行命令
     let temp_dir = std::env::temp_dir();
     let bat_path = temp_dir.join("ollama_pull.bat");
-    let bat_content = format!("\"{}\" pull {}\n", ollama_path, model_name);
+    let log_path = temp_dir.join("ollama_pull.log");
     
-    app.emit("model-progress", format!("创建批处理: {:?}", bat_path)).ok();
+    // 获取 ollama 所在目录
+    let ollama_dir = std::path::Path::new(&ollama_path)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    
+    // 批处理文件内容：切换目录、执行命令、输出日志
+    let bat_content = format!(
+        "@echo off\ncd /d \"{}\"\n\"{}\" pull {} 2>&1\nexit /b %errorlevel%\n",
+        ollama_dir, ollama_path, model_name
+    );
+    
+    app.emit("model-progress", format!("批处理文件: {:?}", bat_path)).ok();
+    app.emit("model-progress", format!("工作目录: {}", ollama_dir)).ok();
     
     // 写入批处理文件
     std::fs::write(&bat_path, &bat_content).map_err(|e| {
         app.emit("model-progress", format!("创建批处理失败: {}", e)).ok();
         format!("创建批处理失败: {}", e)
     })?;
+    
+    app.emit("model-progress", format!("批处理内容:\n{}", bat_content)).ok();
     
     let mut child = Command::new("cmd")
         .args(&["/c", bat_path.to_str().unwrap()])
