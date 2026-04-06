@@ -523,29 +523,73 @@ export OLLAMA_NUM_PARALLEL=2       # 并发请求数
 pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
     app.emit("model-progress", "正在启动 OpenClaw...".to_string()).ok();
     
-    // 检查 openclaw 命令是否存在
-    let check_result = Command::new("openclaw")
-        .arg("--version")
-        .output();
+    // 尝试多种方式启动
+    let mut last_error = String::new();
     
-    if check_result.is_err() {
-        return Err("OpenClaw 未安装，请先完成安装".to_string());
-    }
-    
-    // 启动 gateway
-    let result = Command::new("openclaw")
+    // 方法1: 直接运行 openclaw
+    let result1 = Command::new("openclaw")
         .args(&["gateway", "start"])
         .spawn();
     
-    match result {
-        Ok(_child) => {
-            app.emit("model-progress", "✅ OpenClaw 已启动".to_string()).ok();
-            Ok("OpenClaw 已启动，请访问 http://localhost:3000".to_string())
-        }
-        Err(e) => {
-            Err(format!("启动失败: {}", e))
+    if result1.is_ok() {
+        app.emit("model-progress", "✅ OpenClaw 已启动".to_string()).ok();
+        return Ok("OpenClaw 已启动，请访问 http://localhost:3000".to_string());
+    }
+    last_error = "openclaw 命令不可用".to_string();
+    
+    // 方法2: 使用 npx
+    let result2 = Command::new("npx")
+        .args(&["openclaw", "gateway", "start"])
+        .spawn();
+    
+    if result2.is_ok() {
+        app.emit("model-progress", "✅ OpenClaw 已启动 (via npx)".to_string()).ok();
+        return Ok("OpenClaw 已启动，请访问 http://localhost:3000".to_string());
+    }
+    last_error = "npx 启动失败".to_string();
+    
+    // 方法3: Windows 上尝试 npm 全局目录
+    #[cfg(target_os = "windows")]
+    {
+        // 获取 npm 全局 bin 目录
+        let npm_bin = Command::new("npm")
+            .args(&["bin", "-g"])
+            .output();
+        
+        if let Ok(output) = npm_bin {
+            if output.status.success() {
+                let bin_dir = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                let openclaw_exe = format!("{}\\openclaw.cmd", bin_dir);
+                
+                let result3 = Command::new(&openclaw_exe)
+                    .args(&["gateway", "start"])
+                    .spawn();
+                
+                if result3.is_ok() {
+                    app.emit("model-progress", "✅ OpenClaw 已启动".to_string()).ok();
+                    return Ok("OpenClaw 已启动，请访问 http://localhost:3000".to_string());
+                }
+            }
         }
     }
+    
+    // 提供手动启动指引
+    let manual_guide = r#"
+启动失败，请手动启动：
+
+方法1: 打开命令行，运行：
+  openclaw gateway start
+
+方法2: 如果命令不存在，运行：
+  npx openclaw gateway start
+
+方法3: 重新安装 OpenClaw：
+  npm install -g openclaw
+
+然后访问: http://localhost:3000
+"#;
+    
+    Err(manual_guide.to_string())
 }
 
 /// 创建桌面快捷方式

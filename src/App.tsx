@@ -762,13 +762,29 @@ function App() {
       </div>
       
       {/* 启动按钮 */}
+      {/* 错误提示 */}
+      {error && (
+        <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm whitespace-pre-wrap">
+          <div className="flex items-start gap-2">
+            <svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div className="text-red-800 dark:text-red-200">{error}</div>
+          </div>
+        </div>
+      )}
+      
       <button
         onClick={async () => {
           try {
-            const msg = await invoke<string>('start_openclaw')
-            alert(msg)
+            await invoke('start_openclaw')
+            setError('') // 清空错误
+            // 成功启动，打开浏览器
+            setTimeout(() => {
+              window.open('http://localhost:3000', '_blank')
+            }, 1000)
           } catch (err) {
-            alert(`启动失败: ${err}`)
+            setError(String(err))
           }
         }}
         className="w-full px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-medium hover:opacity-90 mb-3 flex items-center justify-center gap-2"
@@ -784,10 +800,10 @@ function App() {
       <button
         onClick={async () => {
           try {
-            const msg = await invoke<string>('create_desktop_shortcut')
-            alert(msg)
+            await invoke('create_desktop_shortcut')
+            setError('') // 清空错误
           } catch (err) {
-            alert(`创建失败: ${err}`)
+            setError(String(err))
           }
         }}
         className="w-full px-6 py-2 bg-purple-500 text-white rounded-lg font-medium hover:bg-purple-600 mb-3 flex items-center justify-center gap-2"
