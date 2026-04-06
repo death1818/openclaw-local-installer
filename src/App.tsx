@@ -343,10 +343,15 @@ function App() {
   const searchSkills = async () => {
     if (!searchQuery.trim()) return
     setSkillSearchLoading(true)
+    setRemoteSkills([]) // 清空之前的结果
     try {
       const skills = await invoke<RemoteSkill[]>('search_skills', { query: searchQuery })
       setRemoteSkills(skills)
+      if (skills.length === 0) {
+        setError('未找到匹配的技能，请尝试其他关键词')
+      }
     } catch (err) {
+      console.error('搜索失败:', err)
       setError(`搜索失败: ${err}`)
     } finally {
       setSkillSearchLoading(false)
@@ -360,6 +365,7 @@ function App() {
       setInstalledSkills(skills)
     } catch (err) {
       console.error('加载技能列表失败:', err)
+      // 不显示错误，静默失败
     }
   }
   
@@ -370,6 +376,7 @@ function App() {
       setSkillUpdates(updates)
     } catch (err) {
       console.error('检查更新失败:', err)
+      // 静默失败
     }
   }
   
@@ -379,7 +386,8 @@ function App() {
     try {
       await invoke('install_skill', { slug })
       // 刷新列表
-      await Promise.all([searchSkills(), loadInstalledSkills()])
+      await Promise.all([loadInstalledSkills()])
+      setInstallingSkill(null)
     } catch (err) {
       setError(`安装失败: ${err}`)
       setInstallingSkill(null)
@@ -417,6 +425,8 @@ function App() {
       setRemoteSkills(skills)
     } catch (err) {
       console.error('加载推荐技能失败:', err)
+      // 显示友好的错误提示
+      setError('加载推荐技能失败，请检查网络连接或稍后重试')
     } finally {
       setSkillSearchLoading(false)
     }
@@ -707,38 +717,93 @@ function App() {
 
   // 渲染完成界面
   const renderComplete = () => (
-    <div className="text-center">
-      <div className="w-20 h-20 mx-auto mb-6 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center">
-        <svg className="w-10 h-10 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-        </svg>
+    <div>
+      <div className="text-center mb-6">
+        <div className="w-20 h-20 mx-auto mb-4 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center">
+          <svg className="w-10 h-10 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+        <h2 className="text-2xl font-bold mb-2">安装完成！</h2>
+        <p className="text-gray-600 dark:text-gray-400">OpenClaw 本地版已成功安装并配置</p>
       </div>
-      <h2 className="text-2xl font-bold mb-2">安装完成！</h2>
-      <p className="text-gray-600 dark:text-gray-400 mb-6">OpenClaw 本地版已成功安装</p>
       
-      <div className="space-y-3">
+      {/* 快速入门指引 */}
+      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 mb-6">
+        <h3 className="font-semibold mb-3 flex items-center gap-2">
+          <svg className="w-5 h-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          快速入门
+        </h3>
+        <div className="space-y-3 text-sm">
+          <div className="flex items-start gap-3">
+            <div className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0">1</div>
+            <div>
+              <p className="font-medium">启动 OpenClaw</p>
+              <p className="text-gray-500 dark:text-gray-400">在终端运行 <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">openclaw gateway start</code></p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <div className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0">2</div>
+            <div>
+              <p className="font-medium">配置 Ollama 环境变量（已完成）</p>
+              <p className="text-gray-500 dark:text-gray-400">上下文窗口已设置为 24K，重启 Ollama 生效</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <div className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0">3</div>
+            <div>
+              <p className="font-medium">开始对话</p>
+              <p className="text-gray-500 dark:text-gray-400">打开 <a href="http://localhost:3000" target="_blank" className="text-blue-500 hover:underline">http://localhost:3000</a> 即可使用</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* 启动按钮 */}
+      <button
+        onClick={async () => {
+          try {
+            await invoke('start_openclaw')
+          } catch (err) {
+            // 如果命令不存在，显示手动启动指引
+            setError('请在终端运行: openclaw gateway start')
+          }
+        }}
+        className="w-full px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-medium hover:opacity-90 mb-3 flex items-center justify-center gap-2"
+      >
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        立即启动 OpenClaw
+      </button>
+      
+      <div className="grid grid-cols-2 gap-3 mb-3">
         <button
           onClick={async () => {
             await loadInstalledModels()
             setStep('model-management')
           }}
-          className="w-full px-6 py-3 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600"
+          className="px-4 py-3 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600"
         >
           模型管理
         </button>
         <button
           onClick={() => setStep('skill-management')}
-          className="w-full px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg font-medium hover:opacity-90"
+          className="px-4 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg font-medium hover:opacity-90"
         >
           技能管理
         </button>
-        <button
-          onClick={() => window.close()}
-          className="w-full px-6 py-3 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
-        >
-          关闭
-        </button>
       </div>
+      
+      <button
+        onClick={() => window.close()}
+        className="w-full px-6 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
+      >
+        关闭安装器
+      </button>
     </div>
   )
 
