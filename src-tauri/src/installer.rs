@@ -266,12 +266,13 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
         
         // 按行处理缓冲区
         while let Some(newline_pos) = buffer.find('\n') {
-            let line = buffer[..newline_pos].trim();
+            // 先提取行内容，再更新 buffer
+            let line = buffer[..newline_pos].trim().to_string(); // 转为 String 避免借用问题
             buffer = buffer[newline_pos + 1..].to_string();
             
             if line.is_empty() { continue; }
             
-            match serde_json::from_str::<serde_json::Value>(line) {
+            match serde_json::from_str::<serde_json::Value>(&line) {
                 Ok(json) => {
                     if let Some(status) = json.get("status").and_then(|s| s.as_str()) {
                         let msg = if let Some(completed) = json.get("completed") {
