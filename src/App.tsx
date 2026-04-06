@@ -276,8 +276,28 @@ function App() {
     setError(null)
     
     try {
+      // 步骤1: 检查并安装 OpenClaw
+      setInstallLog(prev => [...prev, '检查 OpenClaw...'])
+      const openclawInstalled = await invoke<boolean>('check_openclaw_installed')
+      
+      if (!openclawInstalled) {
+        setInstallLog(prev => [...prev, '正在安装 OpenClaw...'])
+        await invoke('install_openclaw')
+        setInstallLog(prev => [...prev, '✅ OpenClaw 安装完成'])
+      } else {
+        setInstallLog(prev => [...prev, '✅ OpenClaw 已安装'])
+      }
+      
+      // 步骤2: 下载模型
+      setInstallLog(prev => [...prev, '正在下载模型...'])
       await invoke('pull_model', { modelName: selectedModel })
+      setInstallLog(prev => [...prev, '✅ 模型下载完成'])
+      
+      // 步骤3: 配置 OpenClaw
+      setInstallLog(prev => [...prev, '正在配置 OpenClaw...'])
       await invoke('configure_openclaw', { modelName: selectedModel })
+      setInstallLog(prev => [...prev, '✅ OpenClaw 配置完成'])
+      
       setStep('complete')
     } catch (err) {
       const errorMsg = String(err)

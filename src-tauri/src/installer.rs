@@ -377,23 +377,46 @@ pub async fn check_openclaw_installed() -> Result<bool, String> {
 // 安装 OpenClaw
 #[tauri::command]
 pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), String> {
-    app.emit("install-progress", "正在安装 OpenClaw...").ok();
+    app.emit("model-progress", "正在安装 OpenClaw...".to_string()).ok();
     
-    #[cfg(target_os = "windows")]
-    {
-        let npm_output = Command::new("npm")
-            .args(&["install", "-g", "openclaw@latest"])
-            .output()
-            .map_err(|e| e.to_string())?;
-        
-        if !npm_output.status.success() {
-            return Err("安装 OpenClaw 失败".to_string());
+    // 使用 npm 全局安装 OpenClaw
+    let result = Command::new("npm")
+        .args(&["install", "-g", "openclaw@latest"])
+        .output();
+    
+    match result {
+        Ok(output) => {
+            if output.status.success() {
+                app.emit("model-progress", "✅ OpenClaw 安装完成".to_string()).ok();
+                
+                // 验证安装
+                let verify = Command::new("openclaw")
+                    .arg("--version")
+                    .output();
+                
+                match verify {
+                    Ok(v) if v.status.success() => {
+                        let version = String::from_utf8_lossy(&v.stdout);
+                        app.emit("model-progress", format!("✅ 验证成功: {}", version.trim())).ok();
+                        Ok(())
+                    }
+                    _ => {
+                        app.emit("model-progress", "⚠️ 安装成功但验证失败，可能需要重启终端".to_string()).ok();
+                        Ok(())
+                    }
+                }
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                Err(format!("安装失败: {}", stderr))
+            }
+        }
+        Err(e) => {
+            Err(format!("执行 npm 命令失败: {}。请确保已安装 Node.js 和 npm", e))
         }
     }
-    
-    app.emit("install-progress", "OpenClaw 安装完成").ok();
-    Ok(())
 }
+
+
 
 // 配置 OpenClaw 使用本地模型
 #[tauri::command]
