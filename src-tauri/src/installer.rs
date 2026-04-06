@@ -517,3 +517,111 @@ export OLLAMA_NUM_PARALLEL=2       # 并发请求数
     
     Ok(())
 }
+
+/// 启动 OpenClaw
+#[tauri::command]
+pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
+    app.emit("model-progress", "正在启动 OpenClaw...".to_string()).ok();
+    
+    // 检查 openclaw 命令是否存在
+    let check_result = Command::new("openclaw")
+        .arg("--version")
+        .output();
+    
+    if check_result.is_err() {
+        return Err("OpenClaw 未安装，请先完成安装".to_string());
+    }
+    
+    // 启动 gateway
+    let result = Command::new("openclaw")
+        .args(&["gateway", "start"])
+        .spawn();
+    
+    match result {
+        Ok(_child) => {
+            app.emit("model-progress", "✅ OpenClaw 已启动".to_string()).ok();
+            Ok("OpenClaw 已启动，请访问 http://localhost:3000".to_string())
+        }
+        Err(e) => {
+            Err(format!("启动失败: {}", e))
+        }
+    }
+}
+
+/// 创建桌面快捷方式
+#[tauri::command]
+pub async fn create_desktop_shortcut() -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let desktop = std::env::var("USERPROFILE")
+            .map(|p| format!("{}\\Desktop", p))
+            .map_err(|_| "无法找到桌面目录".to_string())?;
+        
+        let shortcut = format!("{}\\OpenClaw.lnk", desktop);
+        let target = "openclaw";
+        
+        // 使用 PowerShell 创建快捷方式
+        let ps_script = format!(
+            "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('{}'); $s.TargetPath = '{}'; $s.Arguments = 'gateway start'; $s.Save()",
+            shortcut, target
+        );
+        
+        let result = Command::new("powershell")
+            .args(&["-Command", &ps_script])
+            .output();
+        
+        match result {
+            Ok(_) => Ok("桌面快捷方式创建成功！".to_string()),
+            Err(e) => Err(format!("创建失败: {}", e))
+        }
+    }
+    
+    #[cfg(target_os = "macos")]
+    {
+        let desktop = std::env::var("HOME")
+            .map(|p| format!("{}/Desktop", p))
+            .map_err(|_| "无法找到桌面目录".to_string())?;
+        
+        let shortcut = format!("{}/OpenClaw.command", desktop);
+        let content = "#!/bin/bash\nopenclaw gateway start\n";
+        
+        std::fs::write(&shortcut, content).map_err(|e| e.to_string())?;
+        
+        // 添加执行权限
+        Command::new("chmod")
+            .args(&["+x", &shortcut])
+            .output()
+            .ok();
+        
+        Ok("桌面快捷方式创建成功！".to_string())
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        let desktop_dir = std::env::var("HOME")
+            .map(|p| format!("{}/Desktop", p))
+            .map_err(|_| "无法找到桌面目录".to_string())?;
+        
+        let shortcut = format!("{}/openclaw.desktop", desktop_dir);
+        let content = r#"[Desktop Entry]
+Version=1.0
+Type=Application
+Name=OpenClaw
+Comment=本地 AI 助手
+Exec=openclaw gateway start
+Icon=openclaw
+Terminal=true
+Categories=Development;
+"#;
+        
+        std::fs::write(&shortcut, content).map_err(|e| e.to_string())?;
+        
+        // 添加执行权限
+        Command::new("chmod")
+            .args(&["+x", &shortcut])
+            .output()
+            .ok();
+        
+        Ok("桌面快捷方式创建成功！".to_string())
+    }
+}

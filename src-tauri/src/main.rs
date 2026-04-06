@@ -19,6 +19,8 @@ use installer::{
     configure_openclaw,
     check_openclaw_installed,
     install_openclaw,
+    start_openclaw,
+    create_desktop_shortcut,
 };
 use models::{
     list_models,
@@ -58,6 +60,8 @@ fn main() {
             configure_openclaw,
             check_openclaw_installed,
             install_openclaw,
+            start_openclaw,
+            create_desktop_shortcut,
             list_models,
             get_model_info,
             delete_model,

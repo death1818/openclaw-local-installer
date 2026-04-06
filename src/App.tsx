@@ -765,10 +765,10 @@ function App() {
       <button
         onClick={async () => {
           try {
-            await invoke('start_openclaw')
+            const msg = await invoke<string>('start_openclaw')
+            alert(msg)
           } catch (err) {
-            // 如果命令不存在，显示手动启动指引
-            setError('请在终端运行: openclaw gateway start')
+            alert(`启动失败: ${err}`)
           }
         }}
         className="w-full px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-medium hover:opacity-90 mb-3 flex items-center justify-center gap-2"
@@ -778,6 +778,24 @@ function App() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         立即启动 OpenClaw
+      </button>
+      
+      {/* 创建桌面快捷方式 */}
+      <button
+        onClick={async () => {
+          try {
+            const msg = await invoke<string>('create_desktop_shortcut')
+            alert(msg)
+          } catch (err) {
+            alert(`创建失败: ${err}`)
+          }
+        }}
+        className="w-full px-6 py-2 bg-purple-500 text-white rounded-lg font-medium hover:bg-purple-600 mb-3 flex items-center justify-center gap-2"
+      >
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        创建桌面快捷方式
       </button>
       
       <div className="grid grid-cols-2 gap-3 mb-3">
