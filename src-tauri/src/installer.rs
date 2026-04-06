@@ -20,6 +20,7 @@ pub struct ModelRecommendation {
 #[tauri::command]
 pub async fn get_recommended_models(vram_gb: f64, ram_gb: f64) -> Vec<ModelRecommendation> {
     let mut models = vec![
+        // 低配推荐
         ModelRecommendation {
             name: "phi3.5:3.8b".to_string(),
             display_name: "Phi-3.5 3.8B".to_string(),
@@ -40,35 +41,37 @@ pub async fn get_recommended_models(vram_gb: f64, ram_gb: f64) -> Vec<ModelRecom
             recommended: false,
             tags: vec!["轻量".to_string(), "通用".to_string()],
         },
-        ModelRecommendation {
-            name: "llama3.1".to_string(),
-            display_name: "Llama 3.1 8B".to_string(),
-            size_gb: 4.7,
-            description: "主流模型，平衡性能与质量".to_string(),
-            min_vram: 6.0,
-            min_ram: 16.0,
-            recommended: vram_gb >= 6.0 && vram_gb < 12.0,
-            tags: vec!["推荐".to_string(), "通用".to_string()],
-        },
+        // 中配推荐
         ModelRecommendation {
             name: "qwen2.5".to_string(),
             display_name: "Qwen 2.5 7B".to_string(),
             size_gb: 4.7,
-            description: "阿里通义千问，中文能力强".to_string(),
+            description: "阿里通义千问，中文能力强，工具调用稳定".to_string(),
             min_vram: 6.0,
             min_ram: 16.0,
             recommended: vram_gb >= 6.0 && vram_gb < 12.0,
-            tags: vec!["中文".to_string(), "通用".to_string()],
+            tags: vec!["中文".to_string(), "工具调用".to_string()],
         },
         ModelRecommendation {
             name: "qwen2.5:14b".to_string(),
             display_name: "Qwen 2.5 14B".to_string(),
             size_gb: 9.0,
-            description: "高质量中文通用模型".to_string(),
+            description: "高质量中文模型，代理任务表现优秀".to_string(),
             min_vram: 12.0,
             min_ram: 32.0,
-            recommended: vram_gb >= 12.0 && vram_gb < 24.0,
-            tags: vec!["中文".to_string(), "高级".to_string()],
+            recommended: vram_gb >= 12.0 && vram_gb < 20.0,
+            tags: vec!["中文".to_string(), "代理任务".to_string()],
+        },
+        // 高配首选 - 文档推荐
+        ModelRecommendation {
+            name: "qwen3:30b-a3b".to_string(),
+            display_name: "Qwen 3 30B (MoE) ⭐".to_string(),
+            size_gb: 18.6,
+            description: "代理任务首选！MoE 架构，30B 推理能力仅消耗 3B 激活量".to_string(),
+            min_vram: 20.0,
+            min_ram: 32.0,
+            recommended: vram_gb >= 20.0,
+            tags: vec!["首选".to_string(), "代理任务".to_string(), "MoE".to_string()],
         },
         ModelRecommendation {
             name: "qwen2.5:32b".to_string(),
@@ -77,7 +80,7 @@ pub async fn get_recommended_models(vram_gb: f64, ram_gb: f64) -> Vec<ModelRecom
             description: "旗舰模型，最佳质量".to_string(),
             min_vram: 24.0,
             min_ram: 64.0,
-            recommended: vram_gb >= 24.0,
+            recommended: false,
             tags: vec!["旗舰".to_string(), "中文".to_string()],
         },
     ];
@@ -393,7 +396,9 @@ pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), String> {
 
 // 配置 OpenClaw 使用本地模型
 #[tauri::command]
-pub async fn configure_openclaw(model_name: String) -> Result<String, String> {
+pub async fn configure_openclaw(model_name: String, app: tauri::AppHandle) -> Result<String, String> {
+    app.emit("model-progress", "配置 OpenClaw...").ok();
+    
     let config_dir = dirs::config_dir()
         .ok_or("无法找到配置目录")?
         .join("openclaw");
@@ -402,15 +407,18 @@ pub async fn configure_openclaw(model_name: String) -> Result<String, String> {
     
     let config_path = config_dir.join("openclaw.json");
     
+    // 配置 OpenClaw - 关键：contextTokens 必须匹配 OLLAMA_NUM_CTX
     let config = serde_json::json!({
         "models": {
             "providers": {
                 "ollama": {
                     "baseUrl": "http://127.0.0.1:11434",
-                    "apiKey": "local",
+                    "apiKey": "dummy-key",  // Ollama 不需要真实 key，但不能为空
+                    "authHeader": false,
                     "api": "ollama"
                 }
-            }
+            },
+            "contextTokens": 24576  // 匹配 OLLAMA_NUM_CTX
         },
         "agents": {
             "defaults": {
@@ -426,5 +434,85 @@ pub async fn configure_openclaw(model_name: String) -> Result<String, String> {
     let mut file = fs::File::create(&config_path).await.map_err(|e| e.to_string())?;
     file.write_all(config_str.as_bytes()).await.map_err(|e| e.to_string())?;
     
+    app.emit("model-progress", format!("OpenClaw 配置已保存: {}", config_path.display())).ok();
+    
+    // 配置 Ollama 环境变量
+    configure_ollama_env(&app).await?;
+    
     Ok(config_path.display().to_string())
+}
+
+/// 配置 Ollama 环境变量 - 关键优化
+async fn configure_ollama_env(app: &tauri::AppHandle) -> Result<(), String> {
+    app.emit("model-progress", "配置 Ollama 环境变量...").ok();
+    
+    #[cfg(target_os = "windows")]
+    {
+        // Windows: 设置用户环境变量
+        let env_vars = vec![
+            ("OLLAMA_NUM_CTX", "24576"),        // 上下文窗口 - 最关键！
+            ("OLLAMA_FLASH_ATTENTION", "1"),   // 启用 Flash Attention
+            ("OLLAMA_KV_CACHE_TYPE", "q8_0"),  // KV 缓存量化，省显存
+            ("OLLAMA_KEEP_ALIVE", "1h"),       // 模型保留显存时间
+            ("OLLAMA_NUM_PARALLEL", "2"),      // 并发请求数
+        ];
+        
+        for (key, value) in env_vars {
+            let output = Command::new("setx")
+                .args(&[key, value])
+                .output()
+                .map_err(|e| format!("设置 {} 失败: {}", key, e))?;
+            
+            if output.status.success() {
+                app.emit("model-progress", format!("✅ {}={}", key, value)).ok();
+            } else {
+                app.emit("model-progress", format!("⚠️ 设置 {} 失败", key)).ok();
+            }
+        }
+        
+        app.emit("model-progress", "环境变量已设置，重启 Ollama 后生效".to_string()).ok();
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Linux/macOS: 写入 ~/.bashrc 或 ~/.zshrc
+        let home = std::env::var("HOME").unwrap_or_default();
+        let bashrc = format!("{}/.bashrc", home);
+        let zshrc = format!("{}/.zshrc", home);
+        
+        let env_content = r#"
+# Ollama 优化配置 (由 OpenClaw 安装器添加)
+export OLLAMA_NUM_CTX=24576        # 上下文窗口
+export OLLAMA_FLASH_ATTENTION=1    # Flash Attention
+export OLLAMA_KV_CACHE_TYPE=q8_0   # KV 缓存量化
+export OLLAMA_KEEP_ALIVE=1h        # 模型保留时间
+export OLLAMA_NUM_PARALLEL=2       # 并发请求数
+"#;
+        
+        // 追加到 bashrc
+        if std::path::Path::new(&bashrc).exists() {
+            let mut file = std::fs::OpenOptions::new()
+                .append(true)
+                .open(&bashrc)
+                .map_err(|e| e.to_string())?;
+            use std::io::Write;
+            file.write_all(env_content.as_bytes()).map_err(|e| e.to_string())?;
+            app.emit("model-progress", format!("✅ 已写入 {}", bashrc)).ok();
+        }
+        
+        // 追加到 zshrc
+        if std::path::Path::new(&zshrc).exists() {
+            let mut file = std::fs::OpenOptions::new()
+                .append(true)
+                .open(&zshrc)
+                .map_err(|e| e.to_string())?;
+            use std::io::Write;
+            file.write_all(env_content.as_bytes()).map_err(|e| e.to_string())?;
+            app.emit("model-progress", format!("✅ 已写入 {}", zshrc)).ok();
+        }
+        
+        app.emit("model-progress", "环境变量已写入，请重新打开终端或 source ~/.bashrc 生效".to_string()).ok();
+    }
+    
+    Ok(())
 }
