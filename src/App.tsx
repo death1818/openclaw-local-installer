@@ -112,6 +112,19 @@ function App() {
 
   useEffect(() => {
     const listeners = [
+      // v0.6.0+ 使用 model-progress 事件
+      listen<string>('model-progress', (event) => {
+        setInstallLog(prev => [...prev, event.payload])
+        // 检测下载状态
+        if (event.payload.includes('✅') || event.payload.includes('下载完成')) {
+          setDownloadStatus('completed')
+        } else if (event.payload.includes('❌') || event.payload.includes('错误')) {
+          setDownloadStatus('failed')
+        } else if (event.payload.includes('下载') || event.payload.includes('pulling')) {
+          setDownloadStatus('downloading')
+        }
+      }),
+      // 兼容旧版事件
       listen<string>('install-progress', (event) => {
         setInstallLog(prev => [...prev, event.payload])
       }),

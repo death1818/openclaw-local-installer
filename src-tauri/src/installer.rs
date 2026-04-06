@@ -244,36 +244,63 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
     
     app.emit("model-progress", "正在下载模型...".to_string()).ok();
     
-    // 读取流式响应
+    // 读取流式响应 - 使用缓冲区处理跨 chunk 的 JSON 行
     use futures_util::StreamExt;
     let mut stream = response.bytes_stream();
+    let mut buffer = String::new();
+    let mut last_percent = 0u64;
     
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| e.to_string())?;
-        let text = String::from_utf8_lossy(&chunk);
+    while let Some(chunk_result) = stream.next().await {
+        let chunk = match chunk_result {
+            Ok(c) => c,
+            Err(e) => {
+                app.emit("model-progress", format!("读取数据块失败: {}", e)).ok();
+                continue;
+            }
+        };
         
-        for line in text.lines() {
+        buffer.push_str(&String::from_utf8_lossy(&chunk));
+        
+        // 按行处理缓冲区
+        while let Some(newline_pos) = buffer.find('\n') {
+            let line = buffer[..newline_pos].trim();
+            buffer = buffer[newline_pos + 1..].to_string();
+            
             if line.is_empty() { continue; }
             
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
-                if let Some(status) = json.get("status").and_then(|s| s.as_str()) {
-                    let msg = if let Some(completed) = json.get("completed") {
-                        let total = json.get("total").and_then(|t| t.as_u64()).unwrap_or(0);
-                        let comp = completed.as_u64().unwrap_or(0);
-                        if total > 0 {
-                            let percent = (comp as f64 / total as f64 * 100.0) as u64;
-                            format!("{} - {}%", status, percent)
+            match serde_json::from_str::<serde_json::Value>(line) {
+                Ok(json) => {
+                    if let Some(status) = json.get("status").and_then(|s| s.as_str()) {
+                        let msg = if let Some(completed) = json.get("completed") {
+                            let total = json.get("total").and_then(|t| t.as_u64()).unwrap_or(0);
+                            let comp = completed.as_u64().unwrap_or(0);
+                            if total > 0 {
+                                let percent = (comp as f64 / total as f64 * 100.0) as u64;
+                                // 每变化 5% 才发送更新，减少日志刷屏
+                                if percent >= last_percent + 5 || percent >= 100 {
+                                    last_percent = percent;
+                                    format!("下载中... {}%", percent)
+                                } else {
+                                    continue; // 跳过重复状态
+                                }
+                            } else {
+                                status.to_string()
+                            }
                         } else {
                             status.to_string()
-                        }
-                    } else {
-                        status.to_string()
-                    };
-                    app.emit("model-progress", msg).ok();
+                        };
+                        app.emit("model-progress", msg).ok();
+                    }
+                    if let Some(error) = json.get("error").and_then(|e| e.as_str()) {
+                        app.emit("model-progress", format!("错误: {}", error)).ok();
+                        return Err(error.to_string());
+                    }
                 }
-                if let Some(error) = json.get("error").and_then(|e| e.as_str()) {
-                    app.emit("model-progress", format!("错误: {}", error)).ok();
-                    return Err(error.to_string());
+                Err(_) => {
+                    // 非 JSON 行，可能是普通文本
+                    if line.starts_with('{') {
+                        app.emit("model-progress", format!("原始: {}", line)).ok();
+                    }
                 }
             }
         }
