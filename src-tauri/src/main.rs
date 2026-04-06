@@ -5,6 +5,7 @@ mod hardware;
 mod installer;
 mod models;
 mod download;
+mod skills;
 
 use tauri::Manager;
 
@@ -27,6 +28,15 @@ use models::{
     check_model_running,
 };
 use download::cancel_model_download;
+use skills::{
+    search_skills,
+    get_recommended_skills,
+    install_skill,
+    update_skill,
+    get_installed_skills,
+    check_skill_updates,
+    uninstall_skill,
+};
 
 fn main() {
     // 初始化日志
@@ -53,6 +63,14 @@ fn main() {
             delete_model,
             stop_running_model,
             check_model_running,
+            // 技能管理
+            search_skills,
+            get_recommended_skills,
+            install_skill,
+            update_skill,
+            get_installed_skills,
+            check_skill_updates,
+            uninstall_skill,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
