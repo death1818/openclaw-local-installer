@@ -604,20 +604,32 @@ pub async fn create_desktop_shortcut() -> Result<String, String> {
         let shortcut = format!("{}\\OpenClaw.lnk", desktop);
         let target = "openclaw";
         
-        // 使用 PowerShell 创建快捷方式
-        let ps_script = format!(
-            "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('{}'); $s.TargetPath = '{}'; $s.Arguments = 'gateway start'; $s.Save()",
-            shortcut, target
+        // 先尝试查找 openclaw 的完整路径
+        let real_target = if let Ok(output) = Command::new("where").arg("openclaw").output() {
+            if output.status.success() {
+                String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .next()
+                    .unwrap_or("openclaw")
+                    .trim()
+                    .to_string()
+            } else {
+                "openclaw".to_string()
+            }
+        } else {
+            "openclaw".to_string()
+        };
+        
+        // 创建 .bat 文件（更可靠）
+        let bat_path = format!("{}\\OpenClaw.bat", desktop);
+        let bat_content = format!(
+            "@echo off\n{} gateway start\necho OpenClaw 已启动，请访问 http://localhost:3000\npause",
+            real_target
         );
         
-        let result = Command::new("powershell")
-            .args(&["-Command", &ps_script])
-            .output();
+        std::fs::write(&bat_path, bat_content).map_err(|e| format!("创建失败: {}", e))?;
         
-        match result {
-            Ok(_) => Ok("桌面快捷方式创建成功！".to_string()),
-            Err(e) => Err(format!("创建失败: {}", e))
-        }
+        Ok("✅ 桌面快捷方式创建成功！双击 OpenClaw.bat 即可启动".to_string())
     }
     
     #[cfg(target_os = "macos")]
