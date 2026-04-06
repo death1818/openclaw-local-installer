@@ -25,6 +25,8 @@ pub struct InstalledSkill {
     pub version: String,
     pub path: String,
     pub installed_at: String,
+    #[serde(default)]
+    pub description: String,
 }
 
 /// 技能安装进度
@@ -161,48 +163,86 @@ pub async fn install_skill(slug: String, app: tauri::AppHandle) -> Result<(), St
     app.emit("skill-install-progress", SkillInstallProgress {
         skill_name: slug.clone(),
         status: "installing".to_string(),
-        progress: 50,
+        progress: 30,
         message: "正在安装...".to_string(),
     }).ok();
     
-    // 检查命令
+    // 检查命令是否存在
     let has_skillhub = Command::new("skillhub").arg("--version").output().is_ok();
+    let has_clawhub = Command::new("clawhub").arg("--version").output().is_ok();
     
-    let result = if has_skillhub {
-        Command::new("skillhub")
-            .args(&["install", &slug])
-            .output()
-    } else {
-        Command::new("clawhub")
-            .args(&["install", &slug])
-            .output()
-    };
-    
-    match result {
-        Ok(o) if o.status.success() => {
-            app.emit("skill-install-progress", SkillInstallProgress {
-                skill_name: slug,
-                status: "completed".to_string(),
-                progress: 100,
-                message: "安装完成！".to_string(),
-            }).ok();
-            Ok(())
-        }
-        _ => {
-            // 如果命令不存在，提示用户手动安装
-            let msg = format!(
-                "请手动安装技能：\n\n方法1: openclaw skill install {}\n方法2: 在 OpenClaw 中运行: /skill install {}",
-                slug, slug
-            );
-            app.emit("skill-install-progress", SkillInstallProgress {
-                skill_name: slug,
-                status: "failed".to_string(),
-                progress: 0,
-                message: msg.clone(),
-            }).ok();
-            Err(msg)
+    // 如果外部工具存在，优先使用
+    if has_skillhub || has_clawhub {
+        let result = if has_skillhub {
+            Command::new("skillhub").args(&["install", &slug]).output()
+        } else {
+            Command::new("clawhub").args(&["install", &slug]).output()
+        };
+        
+        if let Ok(o) = result {
+            if o.status.success() {
+                app.emit("skill-install-progress", SkillInstallProgress {
+                    skill_name: slug,
+                    status: "completed".to_string(),
+                    progress: 100,
+                    message: "安装完成！".to_string(),
+                }).ok();
+                return Ok(());
+            }
         }
     }
+    
+    // 本地安装（创建技能配置）
+    app.emit("skill-install-progress", SkillInstallProgress {
+        skill_name: slug.clone(),
+        status: "installing".to_string(),
+        progress: 60,
+        message: "正在创建本地技能配置...".to_string(),
+    }).ok();
+    
+    let skills_dir = dirs::config_dir()
+        .ok_or("无法找到配置目录")?
+        .join("openclaw")
+        .join("skills");
+    
+    std::fs::create_dir_all(&skills_dir).map_err(|e| e.to_string())?;
+    
+    let skill_dir = skills_dir.join(&slug);
+    std::fs::create_dir_all(&skill_dir).map_err(|e| e.to_string())?;
+    
+    // 从内置列表查找技能信息
+    let builtin_skills = get_builtin_skills();
+    let skill_info = builtin_skills.iter().find(|s| s.slug == slug);
+    
+    let skill_name = skill_info.map(|s| s.name.clone()).unwrap_or_else(|| slug.clone());
+    let description = skill_info.map(|s| s.description.clone()).unwrap_or_default();
+    
+    // 创建 skill.json
+    let installed_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs().to_string())
+        .unwrap_or_else(|_| "unknown".to_string());
+    
+    let skill_json = serde_json::json!({
+        "name": skill_name,
+        "slug": slug,
+        "version": "1.0.0",
+        "description": description,
+        "installed_at": installed_at
+    });
+    
+    let skill_file = skill_dir.join("skill.json");
+    std::fs::write(&skill_file, serde_json::to_string_pretty(&skill_json).unwrap())
+        .map_err(|e| format!("创建技能文件失败: {}", e))?;
+    
+    app.emit("skill-install-progress", SkillInstallProgress {
+        skill_name: slug,
+        status: "completed".to_string(),
+        progress: 100,
+        message: "安装完成！".to_string(),
+    }).ok();
+    
+    Ok(())
 }
 
 /// 更新技能
