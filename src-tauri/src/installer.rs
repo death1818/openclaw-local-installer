@@ -967,20 +967,7 @@ pub async fn create_desktop_shortcut() -> Result<String, String> {
             .map_err(|_| "无法找到桌面目录".to_string())?;
         
         let shortcut = format!("{}/OpenClaw.command", desktop);
-        let content = r"#!/bin/bash
-# 尝试多种方式启动 OpenClaw
-if command -v openclaw &> /dev/null; then
-    openclaw gateway start
-elif command -v npx &> /dev/null; then
-    npx openclaw gateway start
-else
-    echo \"OpenClaw 未找到，请确保已正确安装\"
-    exit 1
-fi
-
-echo \"OpenClaw 已启动，请访问 http://localhost:3000\"
-read -p \"按 Enter 键关闭...\"
-";
+        let content = "#!/bin/bash\n# 尝试多种方式启动 OpenClaw\nif command -v openclaw &> /dev/null; then\n    openclaw gateway start\nelif command -v npx &> /dev/null; then\n    npx openclaw gateway start\nelse\n    echo 'OpenClaw 未找到, 请确保已正确安装'\n    exit 1\nfi\n\necho 'OpenClaw 已启动, 请访问 http://localhost:3000'\nread -p '按 Enter 键关闭...'\n";
         
         std::fs::write(&shortcut, content).map_err(|e| e.to_string())?;
         
