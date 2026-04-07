@@ -901,80 +901,86 @@ pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
         
         // 创建启动脚本
         let ps_script = r#"
+$ErrorActionPreference = "Continue"
+
 $Host.UI.RawUI.WindowTitle = "OpenClaw Gateway"
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "   OpenClaw Gateway 启动中..." -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# 设置环境变量
-$env:OLLAMA_NUM_CTX = "24576"
-$env:OLLAMA_HOST = "0.0.0.0"
-$env:OPENCLAW_LOG = "debug"
-
-# 检查 openclaw 命令（全局安装）
-$openclawCmd = Get-Command openclaw -ErrorAction SilentlyContinue
-
-if ($openclawCmd) {
-    Write-Host "[OK] openclaw: $($openclawCmd.Source)" -ForegroundColor Green
+try {
+    # 设置环境变量
+    $env:OLLAMA_NUM_CTX = "24576"
+    $env:OLLAMA_HOST = "0.0.0.0"
+    $env:OPENCLAW_LOG = "debug"
     
-    # 检查 openclaw 版本
-    Write-Host ""
-    Write-Host "检查 OpenClaw 版本..." -ForegroundColor Yellow
-    & openclaw --version 2>&1 | ForEach-Object { Write-Host $_ }
-    
-    Write-Host ""
-    Write-Host "正在启动 OpenClaw Gateway..." -ForegroundColor Yellow
-    Write-Host "启动日志：" -ForegroundColor Yellow
-    Write-Host "----------------------------------------" -ForegroundColor Gray
-    
-    # 启动 OpenClaw（前台运行，显示日志）
-    & openclaw gateway start 2>&1 | ForEach-Object { 
-        Write-Host $_ 
-    }
-    
-    Write-Host "----------------------------------------" -ForegroundColor Gray
+    Write-Host "[步骤1] 设置环境变量..." -ForegroundColor Yellow
+    Write-Host "  OLLAMA_NUM_CTX=$env:OLLAMA_NUM_CTX" -ForegroundColor Gray
+    Write-Host "  OLLAMA_HOST=$env:OLLAMA_HOST" -ForegroundColor Gray
     Write-Host ""
     
-    if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq $null) {
-        Write-Host "✅ Gateway 已启动" -ForegroundColor Green
-        Write-Host "访问: http://localhost:3000" -ForegroundColor Cyan
+    # 检查 openclaw 命令
+    Write-Host "[步骤2] 检查 openclaw 命令..." -ForegroundColor Yellow
+    $openclawCmd = Get-Command openclaw -ErrorAction SilentlyContinue
+    
+    if ($openclawCmd) {
+        Write-Host "  ✓ 找到: $($openclawCmd.Source)" -ForegroundColor Green
+        
+        # 显示版本
+        Write-Host ""
+        Write-Host "[步骤3] 检查版本..." -ForegroundColor Yellow
+        $version = & openclaw --version 2>&1 | Out-String
+        Write-Host "  版本: $($version.Trim())" -ForegroundColor Gray
+        
+        Write-Host ""
+        Write-Host "[步骤4] 启动 OpenClaw Gateway..." -ForegroundColor Yellow
+        Write-Host "  执行: openclaw gateway start" -ForegroundColor Gray
+        Write-Host "----------------------------------------" -ForegroundColor DarkGray
+        
+        # 启动（前台运行）
+        & openclaw gateway start
+        
+        Write-Host "----------------------------------------" -ForegroundColor DarkGray
+        Write-Host ""
+        Write-Host "Gateway 进程已退出 (退出码: $LASTEXITCODE)" -ForegroundColor Yellow
+        
     } else {
-        Write-Host "❌ 启动失败 (退出码: $LASTEXITCODE)" -ForegroundColor Red
+        Write-Host "  ✗ 未找到 openclaw 命令" -ForegroundColor Red
+        Write-Host ""
+        Write-Host "尝试使用 npx 启动..." -ForegroundColor Yellow
+        
+        # 设置 npm 镜像
+        $env:npm_config_registry = "https://registry.npmmirror.com"
+        Write-Host "  使用淘宝镜像加速" -ForegroundColor Gray
+        
+        $npxCmd = Get-Command npx -ErrorAction SilentlyContinue
+        if (-not $npxCmd) {
+            Write-Host "  ✗ 找不到 npx 命令" -ForegroundColor Red
+            Write-Host "  请确保 Node.js 已安装" -ForegroundColor Yellow
+            throw "缺少 npx"
+        }
+        
+        Write-Host "  ✓ 找到 npx: $($npxCmd.Source)" -ForegroundColor Green
+        Write-Host ""
+        Write-Host "首次启动需要下载依赖（约300MB），请耐心等待..." -ForegroundColor Yellow
+        Write-Host "----------------------------------------" -ForegroundColor DarkGray
+        
+        & npx openclaw gateway start
+        
+        Write-Host "----------------------------------------" -ForegroundColor DarkGray
     }
-} else {
-    Write-Host "[警告] 未找到 openclaw 命令" -ForegroundColor Yellow
-    Write-Host "尝试使用 npx 启动（需要下载依赖）..." -ForegroundColor Yellow
+    
+} catch {
     Write-Host ""
-    
-    # 设置 npm 镜像加速
-    $env:npm_config_registry = "https://registry.npmmirror.com"
-    
-    $npxCmd = Get-Command npx -ErrorAction SilentlyContinue
-    if (-not $npxCmd) {
-        Write-Host "[错误] 找不到 npx 命令" -ForegroundColor Red
-        Write-Host "请确保 Node.js 已安装" -ForegroundColor Yellow
-        Read-Host "按 Enter 键关闭"
-        exit 1
-    }
-    
-    Write-Host "[OK] npx: $($npxCmd.Source)" -ForegroundColor Green
-    Write-Host "[OK] 使用淘宝镜像加速" -ForegroundColor Green
-    Write-Host ""
-    Write-Host "首次启动需要下载依赖（约300MB），请耐心等待..." -ForegroundColor Yellow
-    Write-Host ""
-    
-    # 使用 npx 启动
-    & npx openclaw gateway start 2>&1 | ForEach-Object { Write-Host $_ }
-    
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "" 
-        Write-Host "[错误] 启动失败 (退出码: $LASTEXITCODE)" -ForegroundColor Red
-    }
+    Write-Host "❌ 发生错误: $_" -ForegroundColor Red
+    Write-Host $_.ScriptStackTrace -ForegroundColor DarkGray
 }
 
 Write-Host ""
+Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "按任意键关闭此窗口..." -ForegroundColor Yellow
+Write-Host "========================================" -ForegroundColor Cyan
 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 "#;
         
