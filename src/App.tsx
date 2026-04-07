@@ -400,36 +400,6 @@ function App() {
     }
   }
   
-  // 安装技能
-  const installSkill = async (slug: string) => {
-    console.log('Installing skill:', slug)
-    setInstallingSkill(slug)
-    try {
-      await invoke('install_skill', { slug })
-      console.log('Skill installed successfully')
-      // 刷新列表
-      await loadInstalledSkills()
-      setInstallingSkill(null)
-    } catch (err) {
-      console.error('Install failed:', err)
-      setError(`安装失败: ${err}`)
-      setInstallingSkill(null)
-    }
-  }
-  
-  // 更新技能
-  const updateSkill = async (slug: string) => {
-    setInstallingSkill(slug)
-    try {
-      await invoke('update_skill', { slug })
-      await Promise.all([loadInstalledSkills(), checkForUpdates()])
-      setInstallingSkill(null)
-    } catch (err) {
-      setError(`更新失败: ${err}`)
-      setInstallingSkill(null)
-    }
-  }
-  
   // 卸载技能
   const uninstallSkill = async (slug: string) => {
     try {
