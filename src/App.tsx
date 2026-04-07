@@ -80,7 +80,7 @@ interface SkillInstallProgress {
   message: string
 }
 
-type InstallStep = 'welcome' | 'license' | 'detecting' | 'select-model' | 'installing' | 'complete' | 'model-management' | 'skill-management'
+type InstallStep = 'welcome' | 'license' | 'detecting' | 'select-model' | 'installing' | 'complete' | 'model-management' | 'skill-management' | 'launcher'
 type Theme = 'light' | 'dark'
 
 // 授权码格式验证
@@ -141,6 +141,11 @@ function App() {
   const [skillUpdates, setSkillUpdates] = useState<RemoteSkill[]>([])
   const [skillSearchLoading, setSkillSearchLoading] = useState(false)
   const [installingSkill, setInstallingSkill] = useState<string | null>(null)
+  
+  // 启动器状态
+  const [gatewayStatus, setGatewayStatus] = useState<'stopped' | 'starting' | 'running' | 'error'>('stopped')
+  const [gatewayUrl, setGatewayUrl] = useState('http://localhost:3000')
+  const [showWebView, setShowWebView] = useState(false)
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')
@@ -770,23 +775,21 @@ function App() {
       <button
         onClick={async () => {
           try {
+            setError('')
+            // 启动 OpenClaw 并跳转到启动器界面
             await invoke('start_openclaw')
-            setError('') // 清空错误
-            // 成功启动，打开浏览器
-            setTimeout(() => {
-              window.open('http://localhost:3000', '_blank')
-            }, 1000)
+            setStep('launcher')
           } catch (err) {
             setError(String(err))
           }
         }}
-        className="w-full px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-medium hover:opacity-90 mb-3 flex items-center justify-center gap-2"
+        className="w-full px-6 py-4 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-medium hover:opacity-90 mb-4 flex items-center justify-center gap-2 text-lg"
       >
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        立即启动 OpenClaw
+        🚀 启动 OpenClaw
       </button>
       
       {/* 创建桌面快捷方式 */}
@@ -1094,6 +1097,80 @@ function App() {
     </div>
   )
 
+  // 启动器界面
+  const renderLauncher = () => (
+    <div className="h-[calc(100vh-73px)] flex flex-col">
+      {/* 工具栏 */}
+      <div className="flex items-center gap-4 px-4 py-2 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+        <button
+          onClick={async () => {
+            try {
+              setGatewayStatus('starting')
+              await invoke('start_openclaw')
+              setGatewayStatus('running')
+            } catch (err) {
+              setGatewayStatus('error')
+              setError(String(err))
+            }
+          }}
+          disabled={gatewayStatus === 'starting'}
+          className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 flex items-center gap-2"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          {gatewayStatus === 'starting' ? '启动中...' : '启动 Gateway'}
+        </button>
+        
+        <div className="flex items-center gap-2">
+          <div className={`w-3 h-3 rounded-full ${
+            gatewayStatus === 'running' ? 'bg-green-500' : 
+            gatewayStatus === 'starting' ? 'bg-yellow-500 animate-pulse' : 
+            gatewayStatus === 'error' ? 'bg-red-500' : 'bg-gray-400'
+          }`} />
+          <span className="text-sm text-gray-600 dark:text-gray-400">
+            {gatewayStatus === 'running' ? '运行中' : 
+             gatewayStatus === 'starting' ? '启动中' : 
+             gatewayStatus === 'error' ? '错误' : '已停止'}
+          </span>
+        </div>
+        
+        <a 
+          href={gatewayUrl} 
+          target="_blank" 
+          className="text-blue-500 hover:underline text-sm"
+        >
+          在浏览器中打开 →
+        </a>
+        
+        <div className="flex-1" />
+        
+        <button
+          onClick={() => setStep('model-management')}
+          className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+        >
+          模型管理
+        </button>
+        <button
+          onClick={() => setStep('skill-management')}
+          className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+        >
+          技能管理
+        </button>
+      </div>
+      
+      {/* Web 视图 */}
+      <div className="flex-1 bg-white dark:bg-gray-900">
+        <iframe 
+          src={gatewayUrl}
+          className="w-full h-full border-0"
+          title="OpenClaw Web Interface"
+        />
+      </div>
+    </div>
+  )
+
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'dark' : ''}`}>
       <div className="min-h-screen bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
@@ -1116,23 +1193,27 @@ function App() {
         </div>
 
         {/* 主内容 */}
-        <div className="max-w-2xl mx-auto px-6 py-12">
-          {error && (
-            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
-              {error}
-              <button onClick={() => setError(null)} className="ml-4 text-sm underline">关闭</button>
-            </div>
-          )}
+        {step === 'launcher' ? (
+          renderLauncher()
+        ) : (
+          <div className="max-w-2xl mx-auto px-6 py-12">
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
+                {error}
+                <button onClick={() => setError(null)} className="ml-4 text-sm underline">关闭</button>
+              </div>
+            )}
 
-          {step === 'welcome' && renderWelcome()}
-          {step === 'license' && renderLicense()}
-          {step === 'detecting' && renderDetecting()}
-          {step === 'select-model' && renderSelectModel()}
-          {step === 'installing' && renderInstalling()}
-          {step === 'complete' && renderComplete()}
-          {step === 'model-management' && renderModelManagement()}
-          {step === 'skill-management' && renderSkillManagement()}
-        </div>
+            {step === 'welcome' && renderWelcome()}
+            {step === 'license' && renderLicense()}
+            {step === 'detecting' && renderDetecting()}
+            {step === 'select-model' && renderSelectModel()}
+            {step === 'installing' && renderInstalling()}
+            {step === 'complete' && renderComplete()}
+            {step === 'model-management' && renderModelManagement()}
+            {step === 'skill-management' && renderSkillManagement()}
+          </div>
+        )}
       </div>
     </div>
   )

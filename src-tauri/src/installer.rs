@@ -925,55 +925,53 @@ $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
 
 /// 创建桌面快捷方式
 #[tauri::command]
-pub async fn create_desktop_shortcut() -> Result<String, String> {
+pub async fn create_desktop_shortcut(app: tauri::AppHandle) -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
         let desktop = std::env::var("USERPROFILE")
             .map(|p| format!("{}\\Desktop", p))
             .map_err(|_| "无法找到桌面目录".to_string())?;
         
-        // 创建 PowerShell 脚本文件
-        let ps1_path = format!("{}\\OpenClaw.ps1", desktop);
-        let ps1_content = r#"Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "   OpenClaw Gateway 启动脚本" -ForegroundColor Cyan
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "正在启动 OpenClaw Gateway..." -ForegroundColor Yellow
-Write-Host "首次启动可能需要下载依赖，请耐心等待..." -ForegroundColor Yellow
-Write-Host ""
-
-# 启动 OpenClaw
-try {
-    npx openclaw gateway start
-    Write-Host ""
-    Write-Host "========================================" -ForegroundColor Green
-    Write-Host "OpenClaw 已启动成功！" -ForegroundColor Green
-    Write-Host "请访问: http://localhost:3000" -ForegroundColor Cyan
-    Write-Host "========================================" -ForegroundColor Green
-} catch {
-    Write-Host ""
-    Write-Host "启动失败！" -ForegroundColor Red
-    Write-Host "请检查是否已安装 OpenClaw: npm install -g openclaw" -ForegroundColor Yellow
-}
-
-Write-Host ""
-Write-Host "按任意键关闭此窗口..."
-$null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
-"#;
+        // 获取当前 EXE 路径
+        let exe_path = std::env::current_exe()
+            .map_err(|e| format!("无法获取程序路径: {}", e))?;
+        let exe_path_str = exe_path.to_string_lossy().to_string();
         
-        std::fs::write(&ps1_path, ps1_content).map_err(|e| format!("创建失败: {}", e))?;
-        
-        // 创建 bat 启动脚本
-        let bat_path = format!("{}\\OpenClaw.bat", desktop);
-        let bat_content = format!(
-            "@echo off
-rem OpenClaw Gateway 启动脚本
-powershell.exe -NoExit -ExecutionPolicy Bypass -File \"{}\"",
-            ps1_path
+        // 使用 PowerShell 创建 .lnk 快捷方式
+        let ps_script = format!(r#"
+$WshShell = New-Object -ComObject WScript.Shell
+$Shortcut = $WshShell.CreateShortcut("{}\\OpenClaw.lnk")
+$Shortcut.TargetPath = "{}"
+$Shortcut.Arguments = "--launch"
+$Shortcut.Description = "OpenClaw 本地 AI 助手"
+$Shortcut.WorkingDirectory = "{}"
+$Shortcut.Save()
+Write-Host "快捷方式已创建"
+"#, 
+            desktop, 
+            exe_path_str,
+            std::env::var("USERPROFILE").unwrap_or_default()
         );
-        std::fs::write(&bat_path, bat_content).map_err(|e| format!("创建失败: {}", e))?;
         
-        Ok("✅ 桌面快捷方式创建成功！\n双击 OpenClaw.bat 即可启动".to_string())
+        let result = Command::new("powershell")
+            .args(&["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &ps_script])
+            .output();
+        
+        match result {
+            Ok(output) => {
+                if output.status.success() {
+                    // 删除旧的 bat 和 ps1 文件
+                    let _ = std::fs::remove_file(format!("{}\\OpenClaw.bat", desktop));
+                    let _ = std::fs::remove_file(format!("{}\\OpenClaw.ps1", desktop));
+                    
+                    Ok("✅ 桌面快捷方式创建成功！\n双击 OpenClaw.lnk 即可启动".to_string())
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    Err(format!("创建快捷方式失败: {}", stderr))
+                }
+            }
+            Err(e) => Err(format!("创建快捷方式失败: {}", e))
+        }
     }
     
     #[cfg(target_os = "macos")]
