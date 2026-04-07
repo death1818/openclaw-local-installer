@@ -861,138 +861,91 @@ pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
     
     #[cfg(target_os = "windows")]
     {
-        // 先检查是否已经在运行
-        let check_result = Command::new("cmd")
-            .args(&["/c", "curl", "-s", "http://localhost:3000"])
-            .output();
-        
-        if let Ok(output) = check_result {
-            if output.status.success() && !output.stdout.is_empty() {
-                app.emit("model-progress", "✅ OpenClaw 已在运行中".to_string()).ok();
-                return Ok("OpenClaw 已在运行，访问 http://localhost:3000".to_string());
+        // 先使用 reqwest 检查是否已经在运行
+        if let Ok(client) = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(2))
+            .build()
+        {
+            if let Ok(resp) = client.get("http://localhost:3000").send().await {
+                if resp.status().is_success() {
+                    app.emit("gateway-started", true).ok();
+                    app.emit("model-progress", "✅ OpenClaw 已在运行中".to_string()).ok();
+                    return Ok("OpenClaw 已在运行，访问 http://localhost:3000".to_string());
+                }
             }
         }
         
-        // 创建临时 PowerShell 脚本
+        app.emit("model-progress", "正在后台启动 OpenClaw Gateway...".to_string()).ok();
+        
+        // 创建后台启动脚本（使用 CMD 后台启动，不弹窗）
         let temp_dir = std::env::temp_dir();
-        let ps1_path = temp_dir.join("start_openclaw.ps1");
-        let ps1_content = r#"# 设置编码为 UTF-8
-chcp 65001 > $null
-$OutputEncoding = [System.Text.Encoding]::UTF8
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        let bat_path = temp_dir.join("start_openclaw_background.bat");
+        let bat_content = r#"@echo off
+chcp 65001 >nul
+echo ========================================
+echo    OpenClaw Gateway 启动中...
+echo ========================================
+echo.
+echo 首次启动可能需要下载依赖，请耐心等待...
+echo.
 
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "   OpenClaw Gateway 启动中..." -ForegroundColor Cyan
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "首次启动可能需要下载依赖，请耐心等待..." -ForegroundColor Yellow
-Write-Host ""
+REM 设置环境变量
+set OLLAMA_NUM_CTX=24576
+set OLLAMA_HOST=0.0.0.0
 
-# 查找 npx 路径
-$npxPaths = @(
-    "$env:APPDATA\npm\npx.cmd",
-    "$env:ProgramFiles\nodejs\npx.cmd",
-    "${env:ProgramFiles(x86)}\nodejs\npx.cmd",
-    "$env:LOCALAPPDATA\npm\npx.cmd"
+REM 后台启动 OpenClaw（不显示窗口）
+start /B npx openclaw gateway start
+
+REM 等待服务启动
+echo 等待服务启动...
+for /L %%i in (1,1,30) do (
+    timeout /t 2 /nobreak >nul
+    curl -s http://localhost:3000 >nul 2>&1
+    if %%errorlevel%% == 0 (
+        echo.
+        echo ========================================
+        echo OpenClaw 已启动！
+        echo 请访问: http://localhost:3000
+        echo ========================================
+        exit /b 0
+    )
 )
 
-$npxCmd = $null
-foreach ($path in $npxPaths) {
-    if (Test-Path $path) {
-        $npxCmd = $path
-        break
-    }
-}
-
-if (-not $npxCmd) {
-    # 尝试直接使用 npx（可能在 PATH 中）
-    $npxCmd = (Get-Command npx -ErrorAction SilentlyContinue).Source
-}
-
-if (-not $npxCmd) {
-    Write-Host "错误: 找不到 npx 命令" -ForegroundColor Red
-    Write-Host "请确保 Node.js 已安装并添加到 PATH" -ForegroundColor Yellow
-    Write-Host "" -ForegroundColor Yellow
-    Write-Host "按任意键关闭..."
-    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
-    exit 1
-}
-
-Write-Host "使用 npx: $npxCmd" -ForegroundColor Gray
-Write-Host ""
-
-# 启动 OpenClaw（后台运行）
-try {
-    Start-Process -FilePath $npxCmd -ArgumentList "openclaw","gateway","start" -NoNewWindow -ErrorAction Stop
-} catch {
-    Write-Host "启动失败: $_" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "按任意键关闭..."
-    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
-    exit 1
-}
-
-# 等待服务启动
-Write-Host "等待服务启动..." -ForegroundColor Yellow
-$maxWait = 60
-$waited = 0
-while ($waited -lt $maxWait) {
-    try {
-        $response = Invoke-WebRequest -Uri "http://localhost:3000" -TimeoutSec 2 -UseBasicParsing -ErrorAction SilentlyContinue
-        if ($response.StatusCode -eq 200) {
-            Write-Host ""
-            Write-Host "========================================" -ForegroundColor Green
-            Write-Host "OpenClaw 已启动！" -ForegroundColor Green
-            Write-Host "请访问: http://localhost:3000" -ForegroundColor Cyan
-            Write-Host "========================================" -ForegroundColor Green
-            exit 0
-        }
-    } catch {}
-    Start-Sleep -Seconds 2
-    $waited += 2
-    Write-Host "." -NoNewLine
-}
-
-Write-Host ""
-Write-Host "启动超时，请手动运行: npx openclaw gateway start" -ForegroundColor Red
-exit 1
+echo.
+echo 启动超时，请手动运行: npx openclaw gateway start
+exit /b 1
 "#;
         
-        if let Err(e) = std::fs::write(&ps1_path, ps1_content) {
+        if let Err(e) = std::fs::write(&bat_path, bat_content) {
             return Err(format!("创建启动脚本失败: {}", e));
         }
         
-        // 使用 start 命令在新窗口启动 PowerShell
+        // 使用 CMD 启动后台脚本（最小化窗口）
         let result = Command::new("cmd")
             .args(&[
                 "/c",
                 "start",
+                "/min",
                 "OpenClaw Gateway",
-                "powershell",
-                "-NoExit",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                &ps1_path.to_string_lossy(),
+                "cmd",
+                "/c",
+                &bat_path.to_string_lossy(),
             ])
             .spawn();
         
         if result.is_ok() {
-            // 等待服务启动
             app.emit("model-progress", "⏳ 等待 OpenClaw 启动...".to_string()).ok();
             
-            // 在后台轮询检查服务是否启动（使用 reqwest，不弹窗）
+            // 在后台轮询检查服务是否启动
             let app_clone = app.clone();
             tokio::spawn(async move {
-                let client = reqwest::Client::builder()
-                    .timeout(std::time::Duration::from_secs(2))
-                    .build()
-                    .ok();
-                
-                if let Some(client) = client {
-                    for _ in 0..30 {
-                        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-                        
+                for i in 0..30 {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                    
+                    if let Ok(client) = reqwest::Client::builder()
+                        .timeout(std::time::Duration::from_secs(2))
+                        .build()
+                    {
                         if let Ok(resp) = client.get("http://localhost:3000").send().await {
                             if resp.status().is_success() {
                                 app_clone.emit("gateway-started", true).ok();
@@ -1005,7 +958,7 @@ exit 1
                 app_clone.emit("model-progress", "⚠️ 启动超时，请检查控制台窗口".to_string()).ok();
             });
             
-            return Ok("OpenClaw 正在新窗口中启动，请等待...".to_string());
+            return Ok("OpenClaw 正在后台启动，请等待...".to_string());
         }
     }
     
