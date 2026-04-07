@@ -7,29 +7,43 @@ use tokio::io::AsyncWriteExt;
 /// 查找 Node.js/npm 的路径
 #[cfg(target_os = "windows")]
 fn find_npm_path() -> Option<String> {
-    // 1. 先尝试环境变量中的 npm
-    if Command::new("npm").arg("--version").output().map(|o| o.status.success()).unwrap_or(false) {
-        return Some("npm".to_string());
-    }
-    
-    // 2. 检查 Node.js 默认安装路径
-    let paths = vec![
-        "C:\\Program Files\\nodejs\\npm.cmd",
-        "C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+    // 1. 检查 Node.js 是否存在于常见安装路径
+    let mut nodejs_paths: Vec<String> = vec![
+        "C:\\Program Files\\nodejs\\node.exe".to_string(),
+        "C:\\Program Files (x86)\\nodejs\\node.exe".to_string(),
     ];
     
-    for path in &paths {
-        if std::path::Path::new(path).exists() {
-            return Some(path.to_string());
+    // 添加用户目录路径
+    if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
+        nodejs_paths.push(format!("{}\\nodejs\\node.exe", localappdata));
+    }
+    if let Ok(userprofile) = std::env::var("USERPROFILE") {
+        nodejs_paths.push(format!("{}\\.nodejs\\node.exe", userprofile));
+    }
+    
+    for node_path in &nodejs_paths {
+        if std::path::Path::new(node_path).exists() {
+            let node_dir = std::path::Path::new(node_path).parent().unwrap();
+            let npm_cmd = node_dir.join("npm.cmd");
+            let npm_cli = node_dir.join("node_modules\\npm\\bin\\npm-cli.js");
+            
+            // 优先使用 npm.cmd
+            if npm_cmd.exists() {
+                return Some(npm_cmd.to_string_lossy().to_string());
+            }
+            
+            // 备选：使用 node 运行 npm-cli.js
+            if npm_cli.exists() {
+                return Some(format!("\"{}\" \"{}\"", node_path, npm_cli.to_string_lossy()));
+            }
         }
     }
     
-    // 3. 使用 node 直接运行 npm-cli.js
-    let npm_cli = "C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js";
-    let node_exe = "C:\\Program Files\\nodejs\\node.exe";
-    
-    if std::path::Path::new(npm_cli).exists() && std::path::Path::new(node_exe).exists() {
-        return Some(format!("{} {}", node_exe, npm_cli));
+    // 2. 尝试环境变量中的 npm
+    if let Ok(output) = Command::new("npm").arg("--version").output() {
+        if output.status.success() {
+            return Some("npm".to_string());
+        }
     }
     
     None
@@ -37,11 +51,36 @@ fn find_npm_path() -> Option<String> {
 
 #[cfg(not(target_os = "windows"))]
 fn find_npm_path() -> Option<String> {
-    if Command::new("npm").arg("--version").output().map(|o| o.status.success()).unwrap_or(false) {
-        Some("npm".to_string())
-    } else {
-        None
+    // 1. 检查常见安装路径
+    let mut nodejs_paths: Vec<String> = vec![
+        "/usr/local/bin/node".to_string(),
+        "/usr/bin/node".to_string(),
+    ];
+    
+    // 添加 nvm 路径
+    if let Ok(home) = std::env::var("HOME") {
+        nodejs_paths.push(format!("{}/.nvm/versions/node/default/bin/node", home));
     }
+    
+    for node_path in &nodejs_paths {
+        if std::path::Path::new(node_path).exists() {
+            if let Some(bin_dir) = std::path::Path::new(node_path).parent() {
+                let npm_path = bin_dir.join("npm");
+                if npm_path.exists() {
+                    return Some(npm_path.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+    
+    // 2. 尝试环境变量
+    if let Ok(output) = Command::new("npm").arg("--version").output() {
+        if output.status.success() {
+            return Some("npm".to_string());
+        }
+    }
+    
+    None
 }
 
 /// 检查 Node.js 是否已安装
