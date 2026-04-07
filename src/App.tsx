@@ -144,8 +144,6 @@ function App() {
   
   // 启动器状态
   const [gatewayStatus, setGatewayStatus] = useState<'stopped' | 'starting' | 'running' | 'error'>('stopped')
-  const [gatewayUrl, setGatewayUrl] = useState('http://localhost:3000')
-  const [showWebView, setShowWebView] = useState(false)
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')
@@ -1155,7 +1153,7 @@ function App() {
         </div>
         
         <a 
-          href={gatewayUrl} 
+          href="http://localhost:3000" 
           target="_blank" 
           className="text-blue-500 hover:underline text-sm"
         >
@@ -1181,7 +1179,7 @@ function App() {
       {/* Web 视图 */}
       <div className="flex-1 bg-white dark:bg-gray-900">
         <iframe 
-          src={gatewayUrl}
+          src="http://localhost:3000"
           className="w-full h-full border-0"
           title="OpenClaw Web Interface"
         />
