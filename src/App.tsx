@@ -200,6 +200,24 @@ function App() {
     }
   }, [])
 
+  // 监听 launch-mode 事件（从命令行参数 --launch 触发）
+  useEffect(() => {
+    const unlisten = listen<boolean>('launch-mode', (event) => {
+      if (event.payload) {
+        console.log('启动器模式激活')
+        setStep('launcher')
+        // 自动启动 Gateway
+        invoke('start_openclaw').catch(err => {
+          console.error('自动启动 Gateway 失败:', err)
+        })
+      }
+    })
+    
+    return () => {
+      unlisten.then(fn => fn())
+    }
+  }, [])
+
   // 授权码验证
   const handleLicenseSubmit = async () => {
     const code = licenseCode.toUpperCase()

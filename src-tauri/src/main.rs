@@ -7,7 +7,7 @@ mod models;
 mod download;
 mod skills;
 
-use tauri::Manager;
+use tauri::{Manager, Emitter};
 
 // 从子模块导入 Tauri 命令
 use hardware::detect_hardware;
@@ -48,6 +48,10 @@ fn main() {
     
     log::info!("OpenClaw 本地安装器启动");
     
+    // 检查命令行参数
+    let args: Vec<String> = std::env::args().collect();
+    let launch_mode = args.iter().any(|arg| arg == "--launch" || arg == "-l");
+    
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
@@ -76,6 +80,14 @@ fn main() {
             check_skill_updates,
             uninstall_skill,
         ])
+        .setup(move |app| {
+            // 如果是启动模式，发送事件给前端
+            if launch_mode {
+                use tauri::Emitter;
+                app.emit("launch-mode", true).ok();
+            }
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
