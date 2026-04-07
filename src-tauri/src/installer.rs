@@ -864,11 +864,21 @@ pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
         // 创建临时 PowerShell 脚本
         let temp_dir = std::env::temp_dir();
         let ps1_path = temp_dir.join("start_openclaw.ps1");
-        let ps1_content = r#"Write-Host "正在启动 OpenClaw..." -ForegroundColor Cyan
-npx openclaw gateway start
+        let ps1_content = r#"Write-Host "正在启动 OpenClaw Gateway..." -ForegroundColor Cyan
 Write-Host ""
-Write-Host "OpenClaw 已启动，请访问 http://localhost:3000" -ForegroundColor Green
-Write-Host "按任意键关闭..."
+Write-Host "首次启动可能需要下载依赖，请耐心等待..." -ForegroundColor Yellow
+Write-Host ""
+
+# 启动 OpenClaw
+npx openclaw gateway start
+
+Write-Host ""
+Write-Host "========================================" -ForegroundColor Green
+Write-Host "OpenClaw 已启动！" -ForegroundColor Green
+Write-Host "请访问: http://localhost:3000" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Green
+Write-Host ""
+Write-Host "按任意键关闭此窗口..."
 $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
 "#;
         
@@ -876,11 +886,12 @@ $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
             return Err(format!("创建启动脚本失败: {}", e));
         }
         
-        // 使用 start 命令在新窗口启动
+        // 使用 start 命令在新窗口启动 PowerShell
         let result = Command::new("cmd")
             .args(&[
                 "/c",
                 "start",
+                "OpenClaw Gateway",
                 "powershell",
                 "-NoExit",
                 "-ExecutionPolicy",
@@ -891,8 +902,8 @@ $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
             .spawn();
         
         if result.is_ok() {
-            app.emit("model-progress", "✅ OpenClaw 已启动".to_string()).ok();
-            return Ok("OpenClaw 已启动，请访问 http://localhost:3000".to_string());
+            app.emit("model-progress", "✅ OpenClaw 已启动，请在新窗口中查看进度".to_string()).ok();
+            return Ok("OpenClaw 正在新窗口中启动，请访问 http://localhost:3000".to_string());
         }
     }
     
@@ -923,12 +934,30 @@ pub async fn create_desktop_shortcut() -> Result<String, String> {
         
         // 创建 PowerShell 脚本文件
         let ps1_path = format!("{}\\OpenClaw.ps1", desktop);
-        let ps1_content = r#"chcp 65001 >$null
-Write-Host "正在启动 OpenClaw..." -ForegroundColor Cyan
-npx openclaw gateway start
+        let ps1_content = r#"Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "   OpenClaw Gateway 启动脚本" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "OpenClaw 已启动，请访问 http://localhost:3000" -ForegroundColor Green
-Write-Host "按任意键关闭..."
+Write-Host "正在启动 OpenClaw Gateway..." -ForegroundColor Yellow
+Write-Host "首次启动可能需要下载依赖，请耐心等待..." -ForegroundColor Yellow
+Write-Host ""
+
+# 启动 OpenClaw
+try {
+    npx openclaw gateway start
+    Write-Host ""
+    Write-Host "========================================" -ForegroundColor Green
+    Write-Host "OpenClaw 已启动成功！" -ForegroundColor Green
+    Write-Host "请访问: http://localhost:3000" -ForegroundColor Cyan
+    Write-Host "========================================" -ForegroundColor Green
+} catch {
+    Write-Host ""
+    Write-Host "启动失败！" -ForegroundColor Red
+    Write-Host "请检查是否已安装 OpenClaw: npm install -g openclaw" -ForegroundColor Yellow
+}
+
+Write-Host ""
+Write-Host "按任意键关闭此窗口..."
 $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
 "#;
         
@@ -938,7 +967,8 @@ $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
         let bat_path = format!("{}\\OpenClaw.bat", desktop);
         let bat_content = format!(
             "@echo off
-powershell -NoExit -ExecutionPolicy Bypass -File \"{}\"",
+rem OpenClaw Gateway 启动脚本
+powershell.exe -NoExit -ExecutionPolicy Bypass -File \"{}\"",
             ps1_path
         );
         std::fs::write(&bat_path, bat_content).map_err(|e| format!("创建失败: {}", e))?;
