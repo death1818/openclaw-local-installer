@@ -91,7 +91,14 @@ function validateLicenseCode(code: string): boolean {
 }
 
 function App() {
-  const [step, setStep] = useState<InstallStep>('welcome')
+  const [step, setStep] = useState<InstallStep>(() => {
+    // 检查是否已安装完成
+    const installed = localStorage.getItem('openclaw_install_completed')
+    if (installed === 'true') {
+      return 'launcher'
+    }
+    return 'welcome'
+  })
   const [theme, setTheme] = useState<Theme>(() => {
     const saved = localStorage.getItem('theme')
     return (saved as Theme) || 'light'
@@ -198,15 +205,30 @@ function App() {
     }
   }, [])
 
+  // 如果已安装完成，自动启动 Gateway
+  useEffect(() => {
+    if (step === 'launcher') {
+      setGatewayStatus('starting')
+      invoke('start_openclaw').catch(err => {
+        console.error('自动启动 Gateway 失败:', err)
+        setGatewayStatus('error')
+        setError(String(err))
+      })
+    }
+  }, []) // 只在组件挂载时执行一次
+
   // 监听 launch-mode 事件（从命令行参数 --launch 触发）
   useEffect(() => {
     const unlisten = listen<boolean>('launch-mode', (event) => {
       if (event.payload) {
         console.log('启动器模式激活')
         setStep('launcher')
+        setGatewayStatus('starting')
         // 自动启动 Gateway
         invoke('start_openclaw').catch(err => {
           console.error('自动启动 Gateway 失败:', err)
+          setGatewayStatus('error')
+          setError(String(err))
         })
       }
     })
@@ -332,6 +354,9 @@ function App() {
       setInstallLog(prev => [...prev, '正在配置 OpenClaw...'])
       await invoke('configure_openclaw', { modelName: selectedModel })
       setInstallLog(prev => [...prev, '✅ OpenClaw 配置完成'])
+      
+      // 保存安装完成状态
+      localStorage.setItem('openclaw_install_completed', 'true')
       
       setStep('complete')
     } catch (err) {
@@ -810,7 +835,11 @@ function App() {
             setStep('launcher')
             setGatewayStatus('starting')
             // 自动创建桌面快捷方式
-            await invoke('create_desktop_shortcut')
+            try {
+              await invoke('create_desktop_shortcut')
+            } catch (e) {
+              console.log('创建快捷方式:', e)
+            }
             // 启动 OpenClaw（后端会通过事件通知启动成功）
             await invoke('start_openclaw')
           } catch (err) {

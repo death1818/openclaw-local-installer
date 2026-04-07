@@ -933,22 +933,24 @@ exit 1
             // 等待服务启动
             app.emit("model-progress", "⏳ 等待 OpenClaw 启动...".to_string()).ok();
             
-            // 在后台轮询检查服务是否启动
+            // 在后台轮询检查服务是否启动（使用 reqwest，不弹窗）
             let app_clone = app.clone();
             tokio::spawn(async move {
-                for _ in 0..30 {
-                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-                    
-                    let check = Command::new("cmd")
-                        .args(&["/c", "curl", "-s", "-o", "nul", "-w", "%{http_code}", "http://localhost:3000"])
-                        .output();
-                    
-                    if let Ok(output) = check {
-                        let code = String::from_utf8_lossy(&output.stdout);
-                        if code.trim() == "200" {
-                            app_clone.emit("gateway-started", true).ok();
-                            app_clone.emit("model-progress", "✅ OpenClaw 已启动成功！".to_string()).ok();
-                            return;
+                let client = reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(2))
+                    .build()
+                    .ok();
+                
+                if let Some(client) = client {
+                    for _ in 0..30 {
+                        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                        
+                        if let Ok(resp) = client.get("http://localhost:3000").send().await {
+                            if resp.status().is_success() {
+                                app_clone.emit("gateway-started", true).ok();
+                                app_clone.emit("model-progress", "✅ OpenClaw 已启动成功！".to_string()).ok();
+                                return;
+                            }
                         }
                     }
                 }

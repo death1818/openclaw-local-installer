@@ -81,10 +81,15 @@ fn main() {
             uninstall_skill,
         ])
         .setup(move |app| {
-            // 如果是启动模式，发送事件给前端
+            // 如果是启动模式，延迟发送事件给前端（确保前端已准备好）
             if launch_mode {
                 use tauri::Emitter;
-                app.emit("launch-mode", true).ok();
+                let app_handle = app.handle().clone();
+                // 延迟 500ms 发送事件，确保前端已加载
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    app_handle.emit("launch-mode", true).ok();
+                });
             }
             Ok(())
         })
