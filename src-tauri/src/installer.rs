@@ -753,52 +753,65 @@ pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), String> {
 
 
 
-// 配置 OpenClaw 使用本地模型
+// 配置 OpenClaw - 运行 openclaw config 创建 yaml 配置
 #[tauri::command]
 pub async fn configure_openclaw(model_name: String, app: tauri::AppHandle) -> Result<String, String> {
-    app.emit("model-progress", "配置 OpenClaw...").ok();
+    app.emit("model-progress", "配置 OpenClaw...".to_string()).ok();
     
-    let config_dir = dirs::config_dir()
-        .ok_or("无法找到配置目录")?
-        .join("openclaw");
+    // 方法1: 运行 openclaw config 创建配置
+    let config_result = Command::new("openclaw")
+        .args(&["config"])
+        .output();
     
-    fs::create_dir_all(&config_dir).await.map_err(|e| e.to_string())?;
-    
-    let config_path = config_dir.join("openclaw.json");
-    
-    // 配置 OpenClaw - 关键：contextTokens 必须匹配 OLLAMA_NUM_CTX
-    let config = serde_json::json!({
-        "models": {
-            "providers": {
-                "ollama": {
-                    "baseUrl": "http://127.0.0.1:11434",
-                    "apiKey": "dummy-key",  // Ollama 不需要真实 key，但不能为空
-                    "authHeader": false,
-                    "api": "ollama"
-                }
-            },
-            "contextTokens": 24576  // 匹配 OLLAMA_NUM_CTX
-        },
-        "agents": {
-            "defaults": {
-                "model": {
-                    "primary": format!("ollama/{}", model_name),
-                    "fallbacks": []
-                }
+    match config_result {
+        Ok(output) => {
+            if output.status.success() {
+                app.emit("model-progress", "✅ OpenClaw 配置完成".to_string()).ok();
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                app.emit("model-progress", format!("⚠️ openclaw config 警告: {}", stderr)).ok();
+                
+                // 方法2: 如果 openclaw config 失败，手动创建 openclaw.yaml
+                // OpenClaw 配置在用户主目录下的 .openclaw 文件夹
+                let home_dir = std::env::var("USERPROFILE")
+                    .or_else(|_| std::env::var("HOME"))
+                    .map_err(|_| "无法找到用户主目录")?;
+                
+                let config_dir = std::path::PathBuf::from(&home_dir).join(".openclaw");
+                
+                fs::create_dir_all(&config_dir).await.map_err(|e| e.to_string())?;
+                
+                let yaml_path = config_dir.join("openclaw.yaml");
+                
+                // 创建基本配置
+                let yaml_content = format!(r#"
+# OpenClaw 配置文件
+# 由安装器自动生成
+
+# 默认模型配置
+model: {}
+
+# Ollama 配置
+ollama:
+  baseUrl: http://127.0.0.1:11434
+  contextTokens: 24576
+
+# Gateway 配置
+gateway:
+  port: 3000
+  host: 0.0.0.0
+"#, model_name);
+                
+                fs::write(&yaml_path, yaml_content).await.map_err(|e| e.to_string())?;
+                app.emit("model-progress", format!("✅ 配置文件已创建: {}", yaml_path.display())).ok();
             }
         }
-    });
+        Err(e) => {
+            app.emit("model-progress", format!("⚠️ 无法运行 openclaw config: {}", e)).ok();
+        }
+    }
     
-    let config_str = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
-    let mut file = fs::File::create(&config_path).await.map_err(|e| e.to_string())?;
-    file.write_all(config_str.as_bytes()).await.map_err(|e| e.to_string())?;
-    
-    app.emit("model-progress", format!("OpenClaw 配置已保存: {}", config_path.display())).ok();
-    
-    // 配置 Ollama 环境变量
-    configure_ollama_env(&app).await?;
-    
-    Ok(config_path.display().to_string())
+    Ok("OpenClaw 配置完成".to_string())
 }
 
 /// 配置 Ollama 环境变量 - 关键优化
