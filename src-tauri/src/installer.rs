@@ -910,18 +910,38 @@ Write-Host ""
 # 设置环境变量
 $env:OLLAMA_NUM_CTX = "24576"
 $env:OLLAMA_HOST = "0.0.0.0"
+$env:OPENCLAW_LOG = "debug"
 
 # 检查 openclaw 命令（全局安装）
 $openclawCmd = Get-Command openclaw -ErrorAction SilentlyContinue
 
 if ($openclawCmd) {
     Write-Host "[OK] openclaw: $($openclawCmd.Source)" -ForegroundColor Green
+    
+    # 检查 openclaw 版本
+    Write-Host ""
+    Write-Host "检查 OpenClaw 版本..." -ForegroundColor Yellow
+    & openclaw --version 2>&1 | ForEach-Object { Write-Host $_ }
+    
     Write-Host ""
     Write-Host "正在启动 OpenClaw Gateway..." -ForegroundColor Yellow
+    Write-Host "启动日志：" -ForegroundColor Yellow
+    Write-Host "----------------------------------------" -ForegroundColor Gray
+    
+    # 启动 OpenClaw（前台运行，显示日志）
+    & openclaw gateway start 2>&1 | ForEach-Object { 
+        Write-Host $_ 
+    }
+    
+    Write-Host "----------------------------------------" -ForegroundColor Gray
     Write-Host ""
     
-    # 直接使用全局安装的 openclaw
-    & openclaw gateway start
+    if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq $null) {
+        Write-Host "✅ Gateway 已启动" -ForegroundColor Green
+        Write-Host "访问: http://localhost:3000" -ForegroundColor Cyan
+    } else {
+        Write-Host "❌ 启动失败 (退出码: $LASTEXITCODE)" -ForegroundColor Red
+    }
 } else {
     Write-Host "[警告] 未找到 openclaw 命令" -ForegroundColor Yellow
     Write-Host "尝试使用 npx 启动（需要下载依赖）..." -ForegroundColor Yellow
@@ -945,14 +965,17 @@ if ($openclawCmd) {
     Write-Host ""
     
     # 使用 npx 启动
-    & npx openclaw gateway start
+    & npx openclaw gateway start 2>&1 | ForEach-Object { Write-Host $_ }
+    
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "" 
+        Write-Host "[错误] 启动失败 (退出码: $LASTEXITCODE)" -ForegroundColor Red
+    }
 }
 
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "" 
-    Write-Host "[错误] 启动失败 (退出码: $LASTEXITCODE)" -ForegroundColor Red
-    Read-Host "按 Enter 键关闭"
-}
+Write-Host ""
+Write-Host "按任意键关闭此窗口..." -ForegroundColor Yellow
+$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 "#;
         
         let temp_dir = std::env::temp_dir();
