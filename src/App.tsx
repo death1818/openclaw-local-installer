@@ -920,7 +920,19 @@ function App() {
             {skillUpdates.slice(0, 3).map(skill => (
               <button
                 key={skill.slug}
-                onClick={() => updateSkill(skill.slug)}
+                onClick={async () => {
+                  try {
+                    setInstallingSkill(skill.slug);
+                    await invoke('update_skill', { slug: skill.slug });
+                    await Promise.all([loadInstalledSkills(), checkForUpdates()]);
+                    setInstallingSkill(null);
+                    alert('技能更新成功！');
+                  } catch (err) {
+                    console.error('Update failed:', err);
+                    setError(`更新失败: ${err}`);
+                    setInstallingSkill(null);
+                  }
+                }}
                 disabled={installingSkill === skill.slug}
                 className="px-3 py-1 bg-yellow-500 text-white rounded text-sm hover:bg-yellow-600 disabled:opacity-50"
               >
