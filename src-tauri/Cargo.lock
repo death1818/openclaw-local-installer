@@ -2529,7 +2529,7 @@ dependencies = [
 
 [[package]]
 name = "openclaw-local-installer"
-version = "0.9.0"
+version = "0.9.3"
 dependencies = [
  "anyhow",
  "dirs",

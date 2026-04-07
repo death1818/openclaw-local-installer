@@ -861,6 +861,18 @@ pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
     
     #[cfg(target_os = "windows")]
     {
+        // 先检查是否已经在运行
+        let check_result = Command::new("cmd")
+            .args(&["/c", "curl", "-s", "http://localhost:3000"])
+            .output();
+        
+        if let Ok(output) = check_result {
+            if output.status.success() && !output.stdout.is_empty() {
+                app.emit("model-progress", "✅ OpenClaw 已在运行中".to_string()).ok();
+                return Ok("OpenClaw 已在运行，访问 http://localhost:3000".to_string());
+            }
+        }
+        
         // 创建临时 PowerShell 脚本
         let temp_dir = std::env::temp_dir();
         let ps1_path = temp_dir.join("start_openclaw.ps1");
@@ -869,17 +881,33 @@ Write-Host ""
 Write-Host "首次启动可能需要下载依赖，请耐心等待..." -ForegroundColor Yellow
 Write-Host ""
 
-# 启动 OpenClaw
-npx openclaw gateway start
+# 启动 OpenClaw（后台运行）
+Start-Process -FilePath "npx" -ArgumentList "openclaw","gateway","start" -NoNewWindow
+
+# 等待服务启动
+Write-Host "等待服务启动..." -ForegroundColor Yellow
+$maxWait = 60
+$waited = 0
+while ($waited -lt $maxWait) {
+    try {
+        $response = Invoke-WebRequest -Uri "http://localhost:3000" -TimeoutSec 2 -UseBasicParsing -ErrorAction SilentlyContinue
+        if ($response.StatusCode -eq 200) {
+            Write-Host ""
+            Write-Host "========================================" -ForegroundColor Green
+            Write-Host "OpenClaw 已启动！" -ForegroundColor Green
+            Write-Host "请访问: http://localhost:3000" -ForegroundColor Cyan
+            Write-Host "========================================" -ForegroundColor Green
+            exit 0
+        }
+    } catch {}
+    Start-Sleep -Seconds 2
+    $waited += 2
+    Write-Host "." -NoNewLine
+}
 
 Write-Host ""
-Write-Host "========================================" -ForegroundColor Green
-Write-Host "OpenClaw 已启动！" -ForegroundColor Green
-Write-Host "请访问: http://localhost:3000" -ForegroundColor Cyan
-Write-Host "========================================" -ForegroundColor Green
-Write-Host ""
-Write-Host "按任意键关闭此窗口..."
-$null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+Write-Host "启动超时，请手动运行: npx openclaw gateway start" -ForegroundColor Red
+exit 1
 "#;
         
         if let Err(e) = std::fs::write(&ps1_path, ps1_content) {
@@ -902,14 +930,38 @@ $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
             .spawn();
         
         if result.is_ok() {
-            app.emit("model-progress", "✅ OpenClaw 已启动，请在新窗口中查看进度".to_string()).ok();
-            return Ok("OpenClaw 正在新窗口中启动，请访问 http://localhost:3000".to_string());
+            // 等待服务启动
+            app.emit("model-progress", "⏳ 等待 OpenClaw 启动...".to_string()).ok();
+            
+            // 在后台轮询检查服务是否启动
+            let app_clone = app.clone();
+            tokio::spawn(async move {
+                for _ in 0..30 {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                    
+                    let check = Command::new("cmd")
+                        .args(&["/c", "curl", "-s", "-o", "nul", "-w", "%{http_code}", "http://localhost:3000"])
+                        .output();
+                    
+                    if let Ok(output) = check {
+                        let code = String::from_utf8_lossy(&output.stdout);
+                        if code.trim() == "200" {
+                            app_clone.emit("gateway-started", true).ok();
+                            app_clone.emit("model-progress", "✅ OpenClaw 已启动成功！".to_string()).ok();
+                            return;
+                        }
+                    }
+                }
+                app_clone.emit("model-progress", "⚠️ 启动超时，请检查控制台窗口".to_string()).ok();
+            });
+            
+            return Ok("OpenClaw 正在新窗口中启动，请等待...".to_string());
         }
     }
     
     #[cfg(not(target_os = "windows"))]
     {
-        // Linux/macOS 使用终端启动
+        // Linux/macOS
         let result = Command::new("npx")
             .args(&["openclaw", "gateway", "start"])
             .spawn();

@@ -216,6 +216,20 @@ function App() {
     }
   }, [])
 
+  // 监听 gateway-started 事件（后端通知 Gateway 已启动）
+  useEffect(() => {
+    const unlisten = listen<boolean>('gateway-started', (event) => {
+      if (event.payload) {
+        console.log('Gateway 已启动')
+        setGatewayStatus('running')
+      }
+    })
+    
+    return () => {
+      unlisten.then(fn => fn())
+    }
+  }, [])
+
   // 授权码验证
   const handleLicenseSubmit = async () => {
     const code = licenseCode.toUpperCase()
@@ -792,13 +806,15 @@ function App() {
         onClick={async () => {
           try {
             setError('')
+            // 先跳转到启动器界面
+            setStep('launcher')
+            setGatewayStatus('starting')
             // 自动创建桌面快捷方式
             await invoke('create_desktop_shortcut')
-            // 启动 OpenClaw 并跳转到启动器界面
+            // 启动 OpenClaw（后端会通过事件通知启动成功）
             await invoke('start_openclaw')
-            setGatewayStatus('running')
-            setStep('launcher')
           } catch (err) {
+            setGatewayStatus('error')
             setError(String(err))
           }
         }}
@@ -1113,10 +1129,7 @@ function App() {
               setGatewayStatus('starting')
               setError('')
               await invoke('start_openclaw')
-              // 等待几秒让 Gateway 完全启动
-              setTimeout(() => {
-                setGatewayStatus('running')
-              }, 3000)
+              // 等待后端事件 gateway-started 来更新状态
             } catch (err) {
               setGatewayStatus('error')
               setError(String(err))
