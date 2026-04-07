@@ -576,21 +576,17 @@ pub async fn check_openclaw_installed() -> Result<bool, String> {
         }
     }
     
-    // 方法2: 检查 npx openclaw 是否可用
-    let npx_result = Command::new("npx")
-        .args(&["openclaw", "--version"])
-        .output();
-    if let Ok(output) = npx_result {
-        if output.status.success() {
-            return Ok(true);
-        }
-    }
-    
-    // 方法3: 检查全局安装目录
+    // 方法2: Windows 检查全局安装路径
     #[cfg(target_os = "windows")]
     {
         let npm_global = format!("{}\\npm\\openclaw.cmd", std::env::var("APPDATA").unwrap_or_default());
         if std::path::Path::new(&npm_global).exists() {
+            return Ok(true);
+        }
+        
+        // 检查 node_modules
+        let node_modules = format!("{}\\npm\\node_modules\\openclaw", std::env::var("APPDATA").unwrap_or_default());
+        if std::path::Path::new(&node_modules).exists() {
             return Ok(true);
         }
     }
@@ -903,7 +899,7 @@ pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
         
         app.emit("model-progress", "正在后台启动 OpenClaw Gateway...".to_string()).ok();
         
-        // 使用 PowerShell 启动（更可靠）
+        // 创建启动脚本
         let ps_script = r#"
 $Host.UI.RawUI.WindowTitle = "OpenClaw Gateway"
 Write-Host "========================================" -ForegroundColor Cyan
@@ -915,23 +911,42 @@ Write-Host ""
 $env:OLLAMA_NUM_CTX = "24576"
 $env:OLLAMA_HOST = "0.0.0.0"
 
-# 检查 npx
-$npxCmd = Get-Command npx -ErrorAction SilentlyContinue
-if (-not $npxCmd) {
-    Write-Host "[错误] 找不到 npx 命令" -ForegroundColor Red
-    Write-Host "请确保 Node.js 已安装" -ForegroundColor Yellow
-    Read-Host "按 Enter 键关闭"
-    exit 1
+# 检查 openclaw 命令（全局安装）
+$openclawCmd = Get-Command openclaw -ErrorAction SilentlyContinue
+
+if ($openclawCmd) {
+    Write-Host "[OK] openclaw: $($openclawCmd.Source)" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "正在启动 OpenClaw Gateway..." -ForegroundColor Yellow
+    Write-Host ""
+    
+    # 直接使用全局安装的 openclaw
+    & openclaw gateway start
+} else {
+    Write-Host "[警告] 未找到 openclaw 命令" -ForegroundColor Yellow
+    Write-Host "尝试使用 npx 启动（需要下载依赖）..." -ForegroundColor Yellow
+    Write-Host ""
+    
+    # 设置 npm 镜像加速
+    $env:npm_config_registry = "https://registry.npmmirror.com"
+    
+    $npxCmd = Get-Command npx -ErrorAction SilentlyContinue
+    if (-not $npxCmd) {
+        Write-Host "[错误] 找不到 npx 命令" -ForegroundColor Red
+        Write-Host "请确保 Node.js 已安装" -ForegroundColor Yellow
+        Read-Host "按 Enter 键关闭"
+        exit 1
+    }
+    
+    Write-Host "[OK] npx: $($npxCmd.Source)" -ForegroundColor Green
+    Write-Host "[OK] 使用淘宝镜像加速" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "首次启动需要下载依赖（约300MB），请耐心等待..." -ForegroundColor Yellow
+    Write-Host ""
+    
+    # 使用 npx 启动
+    & npx openclaw gateway start
 }
-
-Write-Host "[OK] npx: $($npxCmd.Source)" -ForegroundColor Green
-Write-Host ""
-Write-Host "正在启动 OpenClaw Gateway..." -ForegroundColor Yellow
-Write-Host "首次启动可能需要下载依赖，请耐心等待" -ForegroundColor Yellow
-Write-Host ""
-
-# 启动 OpenClaw
-& npx openclaw gateway start
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "" 
@@ -965,10 +980,11 @@ if ($LASTEXITCODE -ne 0) {
             tokio::spawn(async move {
                 let mut progress = 10;
                 
-                for i in 0..60 { // 最多等待2分钟
+                // 最多等待 5 分钟（首次启动需要下载依赖）
+                for i in 0..150 {
                     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
                     
-                    // 更新进度（每次+1.5，从10到90）
+                    // 更新进度（从10到90，150次循环每次+0.5）
                     if progress < 90 {
                         progress += 1;
                         app_clone.emit("startup-progress", progress).ok();
