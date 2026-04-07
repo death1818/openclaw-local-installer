@@ -568,8 +568,34 @@ fn find_ollama_path(app: &tauri::AppHandle) -> Option<String> {
 // 检查 OpenClaw 是否已安装
 #[tauri::command]
 pub async fn check_openclaw_installed() -> Result<bool, String> {
-    let output = Command::new("openclaw").arg("--version").output();
-    Ok(output.map(|o| o.status.success()).unwrap_or(false))
+    // 方法1: 检查 openclaw 命令
+    let cmd_result = Command::new("openclaw").arg("--version").output();
+    if let Ok(output) = cmd_result {
+        if output.status.success() {
+            return Ok(true);
+        }
+    }
+    
+    // 方法2: 检查 npx openclaw 是否可用
+    let npx_result = Command::new("npx")
+        .args(&["openclaw", "--version"])
+        .output();
+    if let Ok(output) = npx_result {
+        if output.status.success() {
+            return Ok(true);
+        }
+    }
+    
+    // 方法3: 检查全局安装目录
+    #[cfg(target_os = "windows")]
+    {
+        let npm_global = format!("{}\\npm\\openclaw.cmd", std::env::var("APPDATA").unwrap_or_default());
+        if std::path::Path::new(&npm_global).exists() {
+            return Ok(true);
+        }
+    }
+    
+    Ok(false)
 }
 
 // 安装 OpenClaw

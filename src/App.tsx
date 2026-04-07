@@ -375,6 +375,11 @@ function App() {
       if (!openclawInstalled) {
         setInstallLog(prev => [...prev, '正在安装 OpenClaw...'])
         await invoke('install_openclaw')
+        // 重新验证安装是否成功
+        const installedAfter = await invoke<boolean>('check_openclaw_installed')
+        if (!installedAfter) {
+          throw new Error('OpenClaw 安装失败，请查看日志或手动安装')
+        }
         setInstallLog(prev => [...prev, '✅ OpenClaw 安装完成'])
       } else {
         setInstallLog(prev => [...prev, '✅ OpenClaw 已安装'])
