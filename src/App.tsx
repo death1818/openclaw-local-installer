@@ -1036,9 +1036,20 @@ function App() {
                 {skill.installed ? (
                   skill.update_available ? (
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         console.log('Update button clicked:', skill.slug);
-                        updateSkill(skill.slug);
+                        try {
+                          setInstallingSkill(skill.slug);
+                          setError('');
+                          await invoke('update_skill', { slug: skill.slug });
+                          await Promise.all([loadInstalledSkills(), checkForUpdates()]);
+                          setInstallingSkill(null);
+                          alert('技能更新成功！');
+                        } catch (err) {
+                          console.error('Update failed:', err);
+                          setError(`更新失败: ${err}`);
+                          setInstallingSkill(null);
+                        }
                       }}
                       disabled={installingSkill === skill.slug}
                       className="px-3 py-1 bg-yellow-500 text-white rounded text-sm hover:bg-yellow-600 disabled:opacity-50 cursor-pointer"
@@ -1050,9 +1061,23 @@ function App() {
                   )
                 ) : (
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       console.log('Install button clicked:', skill.slug);
-                      installSkill(skill.slug);
+                      try {
+                        setInstallingSkill(skill.slug);
+                        setError('');
+                        console.log('Calling install_skill with slug:', skill.slug);
+                        await invoke('install_skill', { slug: skill.slug });
+                        console.log('install_skill completed');
+                        await loadInstalledSkills();
+                        setInstallingSkill(null);
+                        alert(`技能 ${skill.name} 安装成功！`);
+                      } catch (err) {
+                        console.error('Install failed:', err);
+                        setError(`安装失败: ${err}`);
+                        setInstallingSkill(null);
+                        alert(`安装失败: ${err}`);
+                      }
                     }}
                     disabled={installingSkill === skill.slug}
                     className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 disabled:opacity-50 cursor-pointer"

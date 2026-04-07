@@ -861,12 +861,32 @@ pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
     
     #[cfg(target_os = "windows")]
     {
-        // 使用 PowerShell 启动 OpenClaw
-        let result = Command::new("powershell")
+        // 创建临时 PowerShell 脚本
+        let temp_dir = std::env::temp_dir();
+        let ps1_path = temp_dir.join("start_openclaw.ps1");
+        let ps1_content = r#"Write-Host "正在启动 OpenClaw..." -ForegroundColor Cyan
+npx openclaw gateway start
+Write-Host ""
+Write-Host "OpenClaw 已启动，请访问 http://localhost:3000" -ForegroundColor Green
+Write-Host "按任意键关闭..."
+$null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+"#;
+        
+        if let Err(e) = std::fs::write(&ps1_path, ps1_content) {
+            return Err(format!("创建启动脚本失败: {}", e));
+        }
+        
+        // 使用 start 命令在新窗口启动
+        let result = Command::new("cmd")
             .args(&[
-                "-NoProfile",
-                "-Command",
-                "Start-Process powershell -ArgumentList '-NoExit', '-Command', 'npx openclaw gateway start; Write-Host \"\"; Write-Host \"OpenClaw 已启动，请访问 http://localhost:3000\" -ForegroundColor Green; Write-Host \"按任意键关闭...\"; $null = $Host.UI.RawUI.ReadKey(\"NoEcho,IncludeKeyDown\")'",
+                "/c",
+                "start",
+                "powershell",
+                "-NoExit",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                &ps1_path.to_string_lossy(),
             ])
             .spawn();
         
@@ -901,23 +921,29 @@ pub async fn create_desktop_shortcut() -> Result<String, String> {
             .map(|p| format!("{}\\Desktop", p))
             .map_err(|_| "无法找到桌面目录".to_string())?;
         
-        // 创建 VBScript 文件（避免编码问题，静默启动）
-        let vbs_path = format!("{}\\OpenClaw.vbs", desktop);
-        let vbs_content = r#"Set objShell = CreateObject("WScript.Shell")
-objShell.Run "powershell -NoExit -Command \"npx openclaw gateway start; Write-Host ''; Write-Host 'OpenClaw 已启动，请访问 http://localhost:3000' -ForegroundColor Green; Write-Host '按任意键关闭...'; $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')\"", 1, False
+        // 创建 PowerShell 脚本文件
+        let ps1_path = format!("{}\\OpenClaw.ps1", desktop);
+        let ps1_content = r#"chcp 65001 >$null
+Write-Host "正在启动 OpenClaw..." -ForegroundColor Cyan
+npx openclaw gateway start
+Write-Host ""
+Write-Host "OpenClaw 已启动，请访问 http://localhost:3000" -ForegroundColor Green
+Write-Host "按任意键关闭..."
+$null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
 "#;
         
-        std::fs::write(&vbs_path, vbs_content).map_err(|e| format!("创建失败: {}", e))?;
+        std::fs::write(&ps1_path, ps1_content).map_err(|e| format!("创建失败: {}", e))?;
         
-        // 也创建一个 bat 文件作为备选
+        // 创建 bat 启动脚本
         let bat_path = format!("{}\\OpenClaw.bat", desktop);
-        // 使用 PowerShell 来正确处理 UTF-8
-        let bat_content = "@echo off
-powershell -NoExit -Command \"chcp 65001 >$null; npx openclaw gateway start; Write-Host ''; Write-Host 'OpenClaw 已启动，请访问 http://localhost:3000' -ForegroundColor Green; Write-Host '按任意键关闭...'; $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')\"
-";
+        let bat_content = format!(
+            "@echo off
+powershell -NoExit -ExecutionPolicy Bypass -File \"{}\"",
+            ps1_path
+        );
         std::fs::write(&bat_path, bat_content).map_err(|e| format!("创建失败: {}", e))?;
         
-        Ok("✅ 桌面快捷方式创建成功！\n- OpenClaw.vbs (静默启动)\n- OpenClaw.bat (带窗口启动)".to_string())
+        Ok("✅ 桌面快捷方式创建成功！\n双击 OpenClaw.bat 即可启动".to_string())
     }
     
     #[cfg(target_os = "macos")]
