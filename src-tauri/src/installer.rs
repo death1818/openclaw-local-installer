@@ -912,10 +912,7 @@ pub async fn create_desktop_shortcut() -> Result<String, String> {
             .map(|p| format!("{}\\Desktop", p))
             .map_err(|_| "无法找到桌面目录".to_string())?;
         
-        let shortcut = format!("{}\\OpenClaw.lnk", desktop);
-        let target = "openclaw";
-        
-        // 先尝试查找 openclaw 的完整路径
+        // 查找 openclaw 的完整路径
         let real_target = if let Ok(output) = Command::new("where").arg("openclaw").output() {
             if output.status.success() {
                 String::from_utf8_lossy(&output.stdout)
@@ -925,16 +922,36 @@ pub async fn create_desktop_shortcut() -> Result<String, String> {
                     .trim()
                     .to_string()
             } else {
-                "openclaw".to_string()
+                // 尝试从 Node.js 全局目录查找
+                let npm_global = Command::new("npm")
+                    .args(&["root", "-g"])
+                    .output();
+                
+                if let Ok(npm_output) = npm_global {
+                    if npm_output.status.success() {
+                        let global_dir = String::from_utf8_lossy(&npm_output.stdout).trim().to_string();
+                        let openclaw_cmd = format!("{}\\openclaw\\bin\\openclaw.cmd", global_dir);
+                        if std::path::Path::new(&openclaw_cmd).exists() {
+                            openclaw_cmd
+                        } else {
+                            // 使用 npx 作为备选
+                            "npx openclaw".to_string()
+                        }
+                    } else {
+                        "npx openclaw".to_string()
+                    }
+                } else {
+                    "npx openclaw".to_string()
+                }
             }
         } else {
-            "openclaw".to_string()
+            "npx openclaw".to_string()
         };
         
-        // 创建 .bat 文件（更可靠）
+        // 创建 .bat 文件
         let bat_path = format!("{}\\OpenClaw.bat", desktop);
         let bat_content = format!(
-            "@echo off\n{} gateway start\necho OpenClaw 已启动，请访问 http://localhost:3000\npause",
+            "@echo off\necho 正在启动 OpenClaw...\n{} gateway start\nif errorlevel 1 (\n    echo OpenClaw 启动失败，尝试使用 npx...\n    npx openclaw gateway start\n)\necho.\necho OpenClaw 已启动，请访问 http://localhost:3000\necho 按任意键关闭此窗口...\npause > nul",
             real_target
         );
         
@@ -950,7 +967,20 @@ pub async fn create_desktop_shortcut() -> Result<String, String> {
             .map_err(|_| "无法找到桌面目录".to_string())?;
         
         let shortcut = format!("{}/OpenClaw.command", desktop);
-        let content = "#!/bin/bash\nopenclaw gateway start\n";
+        let content = r"#!/bin/bash
+# 尝试多种方式启动 OpenClaw
+if command -v openclaw &> /dev/null; then
+    openclaw gateway start
+elif command -v npx &> /dev/null; then
+    npx openclaw gateway start
+else
+    echo \"OpenClaw 未找到，请确保已正确安装\"
+    exit 1
+fi
+
+echo \"OpenClaw 已启动，请访问 http://localhost:3000\"
+read -p \"按 Enter 键关闭...\"
+";
         
         std::fs::write(&shortcut, content).map_err(|e| e.to_string())?;
         
@@ -970,16 +1000,16 @@ pub async fn create_desktop_shortcut() -> Result<String, String> {
             .map_err(|_| "无法找到桌面目录".to_string())?;
         
         let shortcut = format!("{}/openclaw.desktop", desktop_dir);
-        let content = r#"[Desktop Entry]
+        let content = r"[Desktop Entry]
 Version=1.0
 Type=Application
 Name=OpenClaw
 Comment=本地 AI 助手
-Exec=openclaw gateway start
+Exec=bash -c 'openclaw gateway start || npx openclaw gateway start'
 Icon=openclaw
 Terminal=true
 Categories=Development;
-"#;
+";
         
         std::fs::write(&shortcut, content).map_err(|e| e.to_string())?;
         
