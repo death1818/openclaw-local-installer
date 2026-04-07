@@ -287,31 +287,6 @@ function App() {
     }
   }, [])
 
-  // 监听启动进度
-  useEffect(() => {
-    const unlisten = listen<string>('model-progress', (event) => {
-      if (gatewayStatus === 'starting') {
-        // 根据消息更新进度
-        const msg = event.payload
-        if (msg.includes('检查') || msg.includes('环境')) {
-          setStartupProgress(10)
-        } else if (msg.includes('启动') || msg.includes('Starting')) {
-          setStartupProgress(30)
-        } else if (msg.includes('下载') || msg.includes('download')) {
-          setStartupProgress(50)
-        } else if (msg.includes('等待')) {
-          setStartupProgress(70)
-        } else if (msg.includes('成功') || msg.includes('✅')) {
-          setStartupProgress(90)
-        }
-      }
-    })
-    
-    return () => {
-      unlisten.then(fn => fn())
-    }
-  }, [gatewayStatus])
-
   // 授权码验证
   const handleLicenseSubmit = async () => {
     const code = licenseCode.toUpperCase()

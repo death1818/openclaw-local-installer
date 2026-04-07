@@ -877,66 +877,57 @@ pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
         
         app.emit("model-progress", "正在后台启动 OpenClaw Gateway...".to_string()).ok();
         
-        // 创建启动脚本
-        let temp_dir = std::env::temp_dir();
-        let bat_path = temp_dir.join("start_openclaw.bat");
-        let bat_content = r#"@echo off
-chcp 65001 >nul
-title OpenClaw Gateway
-mode con: cols=80 lines=30
+        // 使用 PowerShell 启动（更可靠）
+        let ps_script = r#"
+$Host.UI.RawUI.WindowTitle = "OpenClaw Gateway"
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "   OpenClaw Gateway 启动中..." -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host ""
 
-echo ========================================
-echo    OpenClaw Gateway 启动中...
-echo ========================================
-echo.
-echo 正在检查环境...
+# 设置环境变量
+$env:OLLAMA_NUM_CTX = "24576"
+$env:OLLAMA_HOST = "0.0.0.0"
 
-REM 检查 npx 是否可用
-where npx >nul 2>&1
-if %%errorlevel%% neq 0 (
-    echo [错误] 找不到 npx 命令
-    echo 请确保 Node.js 已安装并添加到 PATH
-    echo.
-    pause
-    exit /b 1
-)
+# 检查 npx
+$npxCmd = Get-Command npx -ErrorAction SilentlyContinue
+if (-not $npxCmd) {
+    Write-Host "[错误] 找不到 npx 命令" -ForegroundColor Red
+    Write-Host "请确保 Node.js 已安装" -ForegroundColor Yellow
+    Read-Host "按 Enter 键关闭"
+    exit 1
+}
 
-echo [OK] npx 命令可用
+Write-Host "[OK] npx: $($npxCmd.Source)" -ForegroundColor Green
+Write-Host ""
+Write-Host "正在启动 OpenClaw Gateway..." -ForegroundColor Yellow
+Write-Host "首次启动可能需要下载依赖，请耐心等待" -ForegroundColor Yellow
+Write-Host ""
 
-REM 设置环境变量
-set OLLAMA_NUM_CTX=24576
-set OLLAMA_HOST=0.0.0.0
+# 启动 OpenClaw
+& npx openclaw gateway start
 
-echo.
-echo 正在启动 OpenClaw Gateway...
-echo 首次启动可能需要下载依赖，请耐心等待...
-echo.
-
-REM 启动 OpenClaw（前台运行，显示进度）
-npx openclaw gateway start
-
-if %%errorlevel%% neq 0 (
-    echo.
-    echo [错误] 启动失败
-    echo 请尝试手动运行: npx openclaw gateway start
-    echo.
-    pause
-)
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "" 
+    Write-Host "[错误] 启动失败 (退出码: $LASTEXITCODE)" -ForegroundColor Red
+    Read-Host "按 Enter 键关闭"
+}
 "#;
         
-        if let Err(e) = std::fs::write(&bat_path, bat_content) {
+        let temp_dir = std::env::temp_dir();
+        let ps1_path = temp_dir.join("start_openclaw.ps1");
+        
+        if let Err(e) = std::fs::write(&ps1_path, ps_script) {
             return Err(format!("创建启动脚本失败: {}", e));
         }
         
-        // 在新窗口中启动（用户可以看到进度）
-        let result = Command::new("cmd")
+        // 使用 PowerShell 启动
+        let result = Command::new("powershell")
             .args(&[
-                "/c",
-                "start",
-                "OpenClaw Gateway",
-                "cmd",
-                "/c",
-                &bat_path.to_string_lossy(),
+                "-NoProfile",
+                "-ExecutionPolicy", "Bypass",
+                "-File",
+                &ps1_path.to_string_lossy(),
             ])
             .spawn();
         
