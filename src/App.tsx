@@ -91,14 +91,7 @@ function validateLicenseCode(code: string): boolean {
 }
 
 function App() {
-  const [step, setStep] = useState<InstallStep>(() => {
-    // 检查是否已安装完成
-    const installed = localStorage.getItem('openclaw_install_completed')
-    if (installed === 'true') {
-      return 'launcher'
-    }
-    return 'welcome'
-  })
+  const [step, setStep] = useState<InstallStep>('welcome')
   const [theme, setTheme] = useState<Theme>(() => {
     const saved = localStorage.getItem('theme')
     return (saved as Theme) || 'light'
@@ -206,10 +199,39 @@ function App() {
     }
   }, [])
 
+  // 启动时检测是否已安装
+  useEffect(() => {
+    const checkInstalled = async () => {
+      try {
+        const openclawInstalled = await invoke<boolean>('check_openclaw_installed')
+        const licensed = localStorage.getItem('openclaw_licensed') === 'true'
+        
+        if (openclawInstalled && licensed) {
+          // 已安装且已授权，进入启动器
+          setStep('launcher')
+        } else {
+          // 未安装或未授权，清除旧状态
+          localStorage.removeItem('openclaw_install_completed')
+          if (!licensed) {
+            localStorage.removeItem('openclaw_licensed')
+            localStorage.removeItem('openclaw_license_code')
+          }
+        }
+      } catch (err) {
+        console.error('检测安装状态失败:', err)
+        // 检测失败，显示欢迎页
+        setStep('welcome')
+      }
+    }
+    
+    checkInstalled()
+  }, [])
+
   // 如果已安装完成，自动启动 Gateway
   useEffect(() => {
     if (step === 'launcher') {
       setGatewayStatus('starting')
+      setStartupProgress(5)
       invoke('start_openclaw').catch(err => {
         console.error('自动启动 Gateway 失败:', err)
         setGatewayStatus('error')
@@ -247,6 +269,17 @@ function App() {
         setGatewayStatus('running')
         setStartupProgress(100)
       }
+    })
+    
+    return () => {
+      unlisten.then(fn => fn())
+    }
+  }, [])
+
+  // 监听启动进度事件
+  useEffect(() => {
+    const unlisten = listen<number>('startup-progress', (event) => {
+      setStartupProgress(event.payload)
     })
     
     return () => {
@@ -858,16 +891,13 @@ function App() {
         onClick={async () => {
           try {
             setError('')
-            // 先跳转到启动器界面
+            // 保存安装完成状态
+            localStorage.setItem('openclaw_install_completed', 'true')
+            // 直接进入启动器界面
             setStep('launcher')
             setGatewayStatus('starting')
-            // 自动创建桌面快捷方式
-            try {
-              await invoke('create_desktop_shortcut')
-            } catch (e) {
-              console.log('创建快捷方式:', e)
-            }
-            // 启动 OpenClaw（后端会通过事件通知启动成功）
+            setStartupProgress(5)
+            // 启动 OpenClaw
             await invoke('start_openclaw')
           } catch (err) {
             setGatewayStatus('error')
@@ -882,10 +912,6 @@ function App() {
         </svg>
         🚀 启动 OpenClaw
       </button>
-      
-      <p className="text-center text-sm text-gray-500 dark:text-gray-400 mb-4">
-        ✓ 将自动创建桌面快捷方式
-      </p>
       
       <div className="grid grid-cols-2 gap-3 mb-3">
         <button

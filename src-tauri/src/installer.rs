@@ -877,55 +877,62 @@ pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
         
         app.emit("model-progress", "正在后台启动 OpenClaw Gateway...".to_string()).ok();
         
-        // 创建后台启动脚本（使用 CMD 后台启动，不弹窗）
+        // 创建启动脚本
         let temp_dir = std::env::temp_dir();
-        let bat_path = temp_dir.join("start_openclaw_background.bat");
+        let bat_path = temp_dir.join("start_openclaw.bat");
         let bat_content = r#"@echo off
 chcp 65001 >nul
+title OpenClaw Gateway
+mode con: cols=80 lines=30
+
 echo ========================================
 echo    OpenClaw Gateway 启动中...
 echo ========================================
 echo.
-echo 首次启动可能需要下载依赖，请耐心等待...
-echo.
+echo 正在检查环境...
+
+REM 检查 npx 是否可用
+where npx >nul 2>&1
+if %%errorlevel%% neq 0 (
+    echo [错误] 找不到 npx 命令
+    echo 请确保 Node.js 已安装并添加到 PATH
+    echo.
+    pause
+    exit /b 1
+)
+
+echo [OK] npx 命令可用
 
 REM 设置环境变量
 set OLLAMA_NUM_CTX=24576
 set OLLAMA_HOST=0.0.0.0
 
-REM 后台启动 OpenClaw（不显示窗口）
-start /B npx openclaw gateway start
-
-REM 等待服务启动
-echo 等待服务启动...
-for /L %%i in (1,1,30) do (
-    timeout /t 2 /nobreak >nul
-    curl -s http://localhost:3000 >nul 2>&1
-    if %%errorlevel%% == 0 (
-        echo.
-        echo ========================================
-        echo OpenClaw 已启动！
-        echo 请访问: http://localhost:3000
-        echo ========================================
-        exit /b 0
-    )
-)
-
 echo.
-echo 启动超时，请手动运行: npx openclaw gateway start
-exit /b 1
+echo 正在启动 OpenClaw Gateway...
+echo 首次启动可能需要下载依赖，请耐心等待...
+echo.
+
+REM 启动 OpenClaw（前台运行，显示进度）
+npx openclaw gateway start
+
+if %%errorlevel%% neq 0 (
+    echo.
+    echo [错误] 启动失败
+    echo 请尝试手动运行: npx openclaw gateway start
+    echo.
+    pause
+)
 "#;
         
         if let Err(e) = std::fs::write(&bat_path, bat_content) {
             return Err(format!("创建启动脚本失败: {}", e));
         }
         
-        // 使用 CMD 启动后台脚本（最小化窗口）
+        // 在新窗口中启动（用户可以看到进度）
         let result = Command::new("cmd")
             .args(&[
                 "/c",
                 "start",
-                "/min",
                 "OpenClaw Gateway",
                 "cmd",
                 "/c",
@@ -936,11 +943,19 @@ exit /b 1
         if result.is_ok() {
             app.emit("model-progress", "⏳ 等待 OpenClaw 启动...".to_string()).ok();
             
-            // 在后台轮询检查服务是否启动
+            // 在后台轮询检查服务是否启动，并发送进度事件
             let app_clone = app.clone();
             tokio::spawn(async move {
-                for i in 0..30 {
+                let mut progress = 10;
+                
+                for i in 0..60 { // 最多等待2分钟
                     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                    
+                    // 更新进度（每次+1.5，从10到90）
+                    if progress < 90 {
+                        progress += 1;
+                        app_clone.emit("startup-progress", progress).ok();
+                    }
                     
                     if let Ok(client) = reqwest::Client::builder()
                         .timeout(std::time::Duration::from_secs(2))
@@ -948,6 +963,7 @@ exit /b 1
                     {
                         if let Ok(resp) = client.get("http://localhost:3000").send().await {
                             if resp.status().is_success() {
+                                app_clone.emit("startup-progress", 100).ok();
                                 app_clone.emit("gateway-started", true).ok();
                                 app_clone.emit("model-progress", "✅ OpenClaw 已启动成功！".to_string()).ok();
                                 return;
@@ -955,7 +971,7 @@ exit /b 1
                         }
                     }
                 }
-                app_clone.emit("model-progress", "⚠️ 启动超时，请检查控制台窗口".to_string()).ok();
+                app_clone.emit("model-progress", "⚠️ 启动超时，请查看控制台窗口".to_string()).ok();
             });
             
             return Ok("OpenClaw 正在后台启动，请等待...".to_string());
