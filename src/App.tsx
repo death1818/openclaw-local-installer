@@ -368,6 +368,18 @@ function App() {
     setError(null)
     
     try {
+      // 步骤0: 清理旧版本（如果存在）
+      setInstallLog(prev => [...prev, '检查旧版本...'])
+      
+      // 检查是否需要清理
+      const needClean = localStorage.getItem('openclaw_install_completed') === 'true'
+      if (needClean) {
+        setInstallLog(prev => [...prev, '检测到旧版本，正在清理...'])
+        localStorage.removeItem('openclaw_install_completed')
+        localStorage.removeItem('openclaw_licensed')
+        setInstallLog(prev => [...prev, '✅ 已清理旧版本数据'])
+      }
+      
       // 步骤1: 检查并安装 OpenClaw
       setInstallLog(prev => [...prev, '检查 OpenClaw...'])
       const openclawInstalled = await invoke<boolean>('check_openclaw_installed')
