@@ -753,38 +753,24 @@ pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), String> {
 
 
 
-// 配置 OpenClaw - 运行 openclaw config 创建 yaml 配置
+// 配置 OpenClaw - 直接创建 openclaw.yaml 配置文件
 #[tauri::command]
 pub async fn configure_openclaw(model_name: String, app: tauri::AppHandle) -> Result<String, String> {
     app.emit("model-progress", "配置 OpenClaw...".to_string()).ok();
     
-    // 方法1: 运行 openclaw config 创建配置
-    let config_result = Command::new("openclaw")
-        .args(&["config"])
-        .output();
+    // OpenClaw 配置在用户主目录下的 .openclaw 文件夹
+    let home_dir = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .map_err(|_| "无法找到用户主目录")?;
     
-    match config_result {
-        Ok(output) => {
-            if output.status.success() {
-                app.emit("model-progress", "✅ OpenClaw 配置完成".to_string()).ok();
-            } else {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                app.emit("model-progress", format!("⚠️ openclaw config 警告: {}", stderr)).ok();
-                
-                // 方法2: 如果 openclaw config 失败，手动创建 openclaw.yaml
-                // OpenClaw 配置在用户主目录下的 .openclaw 文件夹
-                let home_dir = std::env::var("USERPROFILE")
-                    .or_else(|_| std::env::var("HOME"))
-                    .map_err(|_| "无法找到用户主目录")?;
-                
-                let config_dir = std::path::PathBuf::from(&home_dir).join(".openclaw");
-                
-                fs::create_dir_all(&config_dir).await.map_err(|e| e.to_string())?;
-                
-                let yaml_path = config_dir.join("openclaw.yaml");
-                
-                // 创建基本配置
-                let yaml_content = format!(r#"
+    let config_dir = std::path::PathBuf::from(&home_dir).join(".openclaw");
+    
+    fs::create_dir_all(&config_dir).await.map_err(|e| e.to_string())?;
+    
+    let yaml_path = config_dir.join("openclaw.yaml");
+    
+    // 创建基本配置
+    let yaml_content = format!(r#"
 # OpenClaw 配置文件
 # 由安装器自动生成
 
@@ -801,15 +787,9 @@ gateway:
   port: 3000
   host: 0.0.0.0
 "#, model_name);
-                
-                fs::write(&yaml_path, yaml_content).await.map_err(|e| e.to_string())?;
-                app.emit("model-progress", format!("✅ 配置文件已创建: {}", yaml_path.display())).ok();
-            }
-        }
-        Err(e) => {
-            app.emit("model-progress", format!("⚠️ 无法运行 openclaw config: {}", e)).ok();
-        }
-    }
+    
+    fs::write(&yaml_path, yaml_content).await.map_err(|e| e.to_string())?;
+    app.emit("model-progress", format!("✅ 配置文件已创建: {}", yaml_path.display())).ok();
     
     Ok("OpenClaw 配置完成".to_string())
 }

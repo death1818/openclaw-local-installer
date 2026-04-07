@@ -205,10 +205,28 @@ function App() {
       try {
         const openclawInstalled = await invoke<boolean>('check_openclaw_installed')
         const licensed = localStorage.getItem('openclaw_licensed') === 'true'
+        const installCompleted = localStorage.getItem('openclaw_install_completed') === 'true'
         
-        if (openclawInstalled && licensed) {
-          // 已安装且已授权，进入启动器
-          setStep('launcher')
+        // 检查配置文件是否存在
+        let configExists = false
+        try {
+          configExists = await invoke<boolean>('check_openclaw_config_exists')
+        } catch {
+          configExists = false
+        }
+        
+        if (openclawInstalled && licensed && installCompleted) {
+          if (configExists) {
+            // 已安装且已授权且配置存在，进入启动器
+            setStep('launcher')
+          } else {
+            // 有安装标记但缺少配置文件，清理并重新安装
+            console.log('检测到旧版本，缺少配置文件，清理中...')
+            localStorage.removeItem('openclaw_install_completed')
+            localStorage.removeItem('openclaw_licensed')
+            localStorage.removeItem('openclaw_license_code')
+            setStep('welcome')
+          }
         } else {
           // 未安装或未授权，清除旧状态
           localStorage.removeItem('openclaw_install_completed')
