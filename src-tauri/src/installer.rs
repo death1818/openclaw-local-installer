@@ -4,6 +4,121 @@ use tauri::{Emitter, Manager};
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
+/// 检查 Node.js 是否已安装
+#[tauri::command]
+pub async fn check_nodejs_installed() -> Result<bool, String> {
+    // 尝试运行 node --version
+    if let Ok(output) = Command::new("node").arg("--version").output() {
+        if output.status.success() {
+            return Ok(true);
+        }
+    }
+    
+    // Windows 上检查默认安装路径
+    #[cfg(target_os = "windows")]
+    {
+        let program_files = std::env::var("ProgramFiles").unwrap_or_default();
+        let local_app_data = std::env::var("LOCALAPPDATA").unwrap_or_default();
+        
+        let paths = vec![
+            format!("{}\\nodejs\\node.exe", program_files),
+            format!("{}\\nodejs\\node.exe", local_app_data),
+            "C:\\Program Files\\nodejs\\node.exe".to_string(),
+        ];
+        
+        for path in paths {
+            if std::path::Path::new(&path).exists() {
+                if let Ok(output) = Command::new(&path).arg("--version").output() {
+                    if output.status.success() {
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+    }
+    
+    Ok(false)
+}
+
+/// Windows 平台安装 Node.js
+#[cfg(target_os = "windows")]
+async fn install_nodejs_windows(app: &tauri::AppHandle) -> Result<(), String> {
+    app.emit("model-progress", "正在下载 Node.js LTS...".to_string()).ok();
+    
+    // 使用淘宝镜像下载 Node.js LTS (v22.14.0)
+    let node_version = "v22.14.0";
+    let download_url = format!(
+        "https://npmmirror.com/mirrors/node/{}/node-{}-x64.msi",
+        node_version, node_version
+    );
+    
+    let temp_dir = std::env::temp_dir();
+    let installer_path = temp_dir.join("nodejs-installer.msi");
+    
+    // 使用 PowerShell 下载
+    let ps_output = Command::new("powershell")
+        .args(&[
+            "-Command",
+            &format!(
+                "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '{}' -OutFile '{}' -UseBasicParsing",
+                download_url,
+                installer_path.display()
+            ),
+        ])
+        .output()
+        .map_err(|e| format!("下载 Node.js 失败: {}", e))?;
+    
+    if !ps_output.status.success() {
+        let stderr = String::from_utf8_lossy(&ps_output.stderr);
+        return Err(format!(
+            "下载失败: {}\n\n请手动安装 Node.js:\n1. 访问 https://nodejs.org/zh-cn/download/\n2. 或使用淘宝镜像: https://npmmirror.com/mirrors/node/",
+            stderr
+        ));
+    }
+    
+    app.emit("model-progress", format!("已下载: {}", installer_path.display())).ok();
+    app.emit("model-progress", "正在安装 Node.js...".to_string()).ok();
+    
+    // 静默安装 Node.js
+    let install_output = Command::new("msiexec")
+        .args(&[
+            "/i",
+            &installer_path.display().to_string(),
+            "/qn",
+            "/norestart",
+        ])
+        .output()
+        .map_err(|e| format!("安装 Node.js 失败: {}", e))?;
+    
+    // 清理安装包
+    let _ = std::fs::remove_file(&installer_path);
+    
+    if install_output.status.success() {
+        app.emit("model-progress", "✅ Node.js 安装完成".to_string()).ok();
+        
+        // 刷新环境变量（Windows 需要）
+        app.emit("model-progress", "⚠️ 请重启安装器以使 Node.js 生效".to_string()).ok();
+        
+        return Ok(());
+    }
+    
+    // 如果静默安装失败，打开安装包让用户手动安装
+    let open_result = Command::new("explorer")
+        .arg(&installer_path)
+        .spawn();
+    
+    if open_result.is_ok() {
+        return Err(
+            "已打开 Node.js 安装程序，请完成安装后重启安装器。"
+                .to_string(),
+        );
+    }
+    
+    Err(format!(
+        "自动安装失败。请手动安装 Node.js:\n1. 访问 https://nodejs.org/zh-cn/download/\n2. 或使用淘宝镜像: https://npmmirror.com/mirrors/node/"
+    ))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelRecommendation {
     pub name: String,
@@ -378,6 +493,48 @@ pub async fn check_openclaw_installed() -> Result<bool, String> {
 #[tauri::command]
 pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), String> {
     app.emit("model-progress", "正在安装 OpenClaw...".to_string()).ok();
+    
+    // 步骤0: 检查 Node.js 是否已安装
+    app.emit("model-progress", "检查 Node.js...".to_string()).ok();
+    
+    let nodejs_installed = if let Ok(output) = Command::new("node").arg("--version").output() {
+        output.status.success()
+    } else {
+        false
+    };
+    
+    if !nodejs_installed {
+        app.emit("model-progress", "❌ 未检测到 Node.js，正在自动安装...".to_string()).ok();
+        
+        // 尝试自动安装 Node.js
+        #[cfg(target_os = "windows")]
+        {
+            let result = install_nodejs_windows(&app).await;
+            if result.is_err() {
+                let err_msg = result.unwrap_err();
+                app.emit("model-progress", err_msg.clone()).ok();
+                return Err(format!(
+                    "需要先安装 Node.js 才能继续安装 OpenClaw。\n\n{}",
+                    err_msg
+                ));
+            }
+            // Node.js 安装成功，提示用户重启
+            return Err("Node.js 已安装，请重启安装器后重试".to_string());
+        }
+        
+        #[cfg(not(target_os = "windows"))]
+        {
+            return Err(
+                "未检测到 Node.js，请先安装：\n\
+                - Ubuntu/Debian: sudo apt install nodejs npm\n\
+                - macOS: brew install node\n\
+                - 或访问: https://nodejs.org/zh-cn/download/"
+                    .to_string(),
+            );
+        }
+    }
+    
+    app.emit("model-progress", "✅ Node.js 已安装".to_string()).ok();
     
     // 方法1: 尝试使用淘宝镜像（国内推荐）
     app.emit("model-progress", "尝试使用淘宝镜像安装...".to_string()).ok();
