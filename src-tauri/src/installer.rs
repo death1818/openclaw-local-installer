@@ -379,7 +379,37 @@ pub async fn check_openclaw_installed() -> Result<bool, String> {
 pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), String> {
     app.emit("model-progress", "正在安装 OpenClaw...".to_string()).ok();
     
-    // 使用 npm 全局安装 OpenClaw
+    // 方法1: 尝试使用淘宝镜像（国内推荐）
+    app.emit("model-progress", "尝试使用淘宝镜像安装...".to_string()).ok();
+    
+    let result = Command::new("npm")
+        .args(&[
+            "install", "-g", "openclaw@latest",
+            "--registry", "https://registry.npmmirror.com"
+        ])
+        .output();
+    
+    if let Ok(ref output) = result {
+        if output.status.success() {
+            app.emit("model-progress", "✅ OpenClaw 安装完成 (淘宝镜像)".to_string()).ok();
+            
+            // 验证安装
+            if let Ok(verify) = Command::new("openclaw").arg("--version").output() {
+                if verify.status.success() {
+                    let version = String::from_utf8_lossy(&verify.stdout);
+                    app.emit("model-progress", format!("✅ 验证成功: {}", version.trim())).ok();
+                    return Ok(());
+                }
+            }
+            
+            app.emit("model-progress", "⚠️ 安装成功但验证失败，可能需要重启终端".to_string()).ok();
+            return Ok(());
+        }
+    }
+    
+    // 方法2: 尝试使用官方源
+    app.emit("model-progress", "淘宝镜像失败，尝试官方源...".to_string()).ok();
+    
     let result = Command::new("npm")
         .args(&["install", "-g", "openclaw@latest"])
         .output();
@@ -387,7 +417,7 @@ pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), String> {
     match result {
         Ok(output) => {
             if output.status.success() {
-                app.emit("model-progress", "✅ OpenClaw 安装完成".to_string()).ok();
+                app.emit("model-progress", "✅ OpenClaw 安装完成 (官方源)".to_string()).ok();
                 
                 // 验证安装
                 let verify = Command::new("openclaw")
@@ -407,7 +437,13 @@ pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), String> {
                 }
             } else {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                Err(format!("安装失败: {}", stderr))
+                
+                // 提供手动安装指引
+                let manual_guide = format!(
+                    "自动安装失败: {}\n\n请手动安装：\n1. 打开命令行\n2. 运行: npm install -g openclaw --registry https://registry.npmmirror.com\n3. 或使用代理: npm install -g openclaw",
+                    stderr
+                );
+                Err(manual_guide)
             }
         }
         Err(e) => {
