@@ -564,8 +564,52 @@ fn find_ollama_path(app: &tauri::AppHandle) -> Option<String> {
     
     Some("ollama".to_string())
 }
+/// 检查 OpenClaw 配置文件是否存在
+#[tauri::command]
+pub async fn check_openclaw_config_exists() -> Result<bool, String> {
+    // 检查配置文件路径
+    let home_dir = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .map_err(|_| "无法找到用户主目录")?;
+    
+    let yaml_path = std::path::PathBuf::from(&home_dir).join(".openclaw").join("openclaw.yaml");
+    
+    Ok(yaml_path.exists())
+}
 
-// 检查 OpenClaw 是否已安装
+/// 清理旧版本（彻底清理）
+#[tauri::command]
+pub async fn clean_old_version() -> Result<String, String> {
+    println!("开始清理旧版本...");
+    
+    // 1. 卸载全局安装的 openclaw
+    #[cfg(target_os = "windows")]
+    let _ = Command::new("npm")
+        .args(&["uninstall", "-g", "openclaw"])
+        .output();
+    
+    #[cfg(not(target_os = "windows"))]
+    let _ = Command::new("npm")
+        .args(&["uninstall", "-g", "openclaw"])
+        .output();
+    
+    // 2. 删除配置文件目录
+    let home_dir = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .map_err(|_| "无法找到用户主目录")?;
+    
+    let config_dir = std::path::PathBuf::from(&home_dir).join(".openclaw");
+    
+    if config_dir.exists() {
+        tokio::fs::remove_dir_all(&config_dir).await.map_err(|e| e.to_string())?;
+        println!("已删除配置目录: {:?}", config_dir);
+    }
+    
+    println!("清理完成");
+    Ok("旧版本已清理".to_string())
+}
+
+/// 检查 OpenClaw 是否已安装
 #[tauri::command]
 pub async fn check_openclaw_installed() -> Result<bool, String> {
     // 方法1: 检查 openclaw 命令

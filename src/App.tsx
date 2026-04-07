@@ -215,25 +215,33 @@ function App() {
           configExists = false
         }
         
-        if (openclawInstalled && licensed && installCompleted) {
-          if (configExists) {
-            // 已安装且已授权且配置存在，进入启动器
-            setStep('launcher')
-          } else {
-            // 有安装标记但缺少配置文件，清理并重新安装
-            console.log('检测到旧版本，缺少配置文件，清理中...')
-            localStorage.removeItem('openclaw_install_completed')
-            localStorage.removeItem('openclaw_licensed')
-            localStorage.removeItem('openclaw_license_code')
-            setStep('welcome')
+        console.log('检测状态:', { openclawInstalled, licensed, installCompleted, configExists })
+        
+        // 关键修复：如果 OpenClaw 已安装但配置不存在，必须清理
+        if (openclawInstalled && !configExists) {
+          console.log('检测到旧版本（缺少配置），清理中...')
+          // 清理旧版本
+          try {
+            await invoke('clean_old_version')
+          } catch (err) {
+            console.error('清理旧版本失败:', err)
           }
-        } else {
-          // 未安装或未授权，清除旧状态
+          // 清理 localStorage
           localStorage.removeItem('openclaw_install_completed')
-          if (!licensed) {
-            localStorage.removeItem('openclaw_licensed')
-            localStorage.removeItem('openclaw_license_code')
-          }
+          localStorage.removeItem('openclaw_licensed')
+          localStorage.removeItem('openclaw_license_code')
+          setStep('welcome')
+          return
+        }
+        
+        // 正常检测：已安装且已授权且配置存在
+        if (openclawInstalled && licensed && installCompleted && configExists) {
+          console.log('已安装完成，进入启动器')
+          setStep('launcher')
+        } else {
+          // 未安装或未授权
+          console.log('未完成安装，显示欢迎页')
+          setStep('welcome')
         }
       } catch (err) {
         console.error('检测安装状态失败:', err)
