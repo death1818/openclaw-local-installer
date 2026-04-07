@@ -4,83 +4,78 @@ use tauri::{Emitter, Manager};
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
-/// 查找 Node.js/npm 的路径
+/// 查找 Node.js 可执行文件路径
 #[cfg(target_os = "windows")]
-fn find_npm_path() -> Option<String> {
-    // 1. 检查 Node.js 是否存在于常见安装路径
-    let mut nodejs_paths: Vec<String> = vec![
+fn find_node_exe() -> Option<String> {
+    // 检查常见安装路径
+    let paths = vec![
         "C:\\Program Files\\nodejs\\node.exe".to_string(),
         "C:\\Program Files (x86)\\nodejs\\node.exe".to_string(),
+        format!("{}\\nodejs\\node.exe", std::env::var("LOCALAPPDATA").unwrap_or_default()),
+        format!("{}\\.nodejs\\node.exe", std::env::var("USERPROFILE").unwrap_or_default()),
     ];
     
-    // 添加用户目录路径
-    if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
-        nodejs_paths.push(format!("{}\\nodejs\\node.exe", localappdata));
-    }
-    if let Ok(userprofile) = std::env::var("USERPROFILE") {
-        nodejs_paths.push(format!("{}\\.nodejs\\node.exe", userprofile));
-    }
-    
-    for node_path in &nodejs_paths {
-        if std::path::Path::new(node_path).exists() {
-            let node_dir = std::path::Path::new(node_path).parent().unwrap();
-            let npm_cmd = node_dir.join("npm.cmd");
-            let npm_cli = node_dir.join("node_modules\\npm\\bin\\npm-cli.js");
-            
-            // 优先使用 npm.cmd
-            if npm_cmd.exists() {
-                return Some(npm_cmd.to_string_lossy().to_string());
-            }
-            
-            // 备选：使用 node 运行 npm-cli.js
-            if npm_cli.exists() {
-                return Some(format!("\"{}\" \"{}\"", node_path, npm_cli.to_string_lossy()));
-            }
+    for path in &paths {
+        if std::path::Path::new(path).exists() {
+            return Some(path.clone());
         }
     }
     
-    // 2. 尝试环境变量中的 npm
-    if let Ok(output) = Command::new("npm").arg("--version").output() {
+    // 尝试 where 命令
+    if let Ok(output) = Command::new("where").arg("node").output() {
         if output.status.success() {
-            return Some("npm".to_string());
+            if let Some(line) = String::from_utf8_lossy(&output.stdout).lines().next() {
+                let trimmed = line.trim();
+                if !trimmed.is_empty() && std::path::Path::new(trimmed).exists() {
+                    return Some(trimmed.to_string());
+                }
+            }
         }
     }
     
     None
 }
 
+/// 查找 Node.js 可执行文件路径
 #[cfg(not(target_os = "windows"))]
-fn find_npm_path() -> Option<String> {
-    // 1. 检查常见安装路径
-    let mut nodejs_paths: Vec<String> = vec![
+fn find_node_exe() -> Option<String> {
+    // 检查常见安装路径
+    let paths = vec![
         "/usr/local/bin/node".to_string(),
         "/usr/bin/node".to_string(),
     ];
     
-    // 添加 nvm 路径
-    if let Ok(home) = std::env::var("HOME") {
-        nodejs_paths.push(format!("{}/.nvm/versions/node/default/bin/node", home));
+    for path in &paths {
+        if std::path::Path::new(path).exists() {
+            return Some(path.clone());
+        }
     }
     
-    for node_path in &nodejs_paths {
-        if std::path::Path::new(node_path).exists() {
-            if let Some(bin_dir) = std::path::Path::new(node_path).parent() {
-                let npm_path = bin_dir.join("npm");
-                if npm_path.exists() {
-                    return Some(npm_path.to_string_lossy().to_string());
+    // 尝试 which 命令
+    if let Ok(output) = Command::new("which").arg("node").output() {
+        if output.status.success() {
+            if let Some(line) = String::from_utf8_lossy(&output.stdout).lines().next() {
+                let trimmed = line.trim();
+                if !trimmed.is_empty() && std::path::Path::new(trimmed).exists() {
+                    return Some(trimmed.to_string());
                 }
             }
         }
     }
     
-    // 2. 尝试环境变量
-    if let Ok(output) = Command::new("npm").arg("--version").output() {
-        if output.status.success() {
-            return Some("npm".to_string());
-        }
-    }
-    
     None
+}
+
+/// 查找 npm 路径
+#[cfg(target_os = "windows")]
+fn find_npm_path() -> Option<String> {
+    // 直接返回 node 路径
+    find_node_exe()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn find_npm_path() -> Option<String> {
+    find_node_exe()
 }
 
 /// 检查 Node.js 是否已安装
@@ -582,41 +577,21 @@ pub async fn check_openclaw_installed() -> Result<bool, String> {
 pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), String> {
     app.emit("model-progress", "正在安装 OpenClaw...".to_string()).ok();
     
-    // 步骤1: 查找 npm 路径（支持刚安装的 Node.js）
+    // 步骤1: 检查 Node.js
     app.emit("model-progress", "检查 Node.js...".to_string()).ok();
     
-    let npm_path = find_npm_path();
-    
-    #[cfg(target_os = "windows")]
-    let npm_path = match npm_path {
-        Some(path) => {
-            app.emit("model-progress", format!("✅ 找到 npm: {}", path)).ok();
-            path
-        }
-        None => {
+    if find_node_exe().is_none() {
+        #[cfg(target_os = "windows")]
+        {
             app.emit("model-progress", "未检测到 Node.js，正在自动安装...".to_string()).ok();
             
-            match install_nodejs_windows(&app).await {
-                Ok(nodejs_dir) => {
-                    // 使用刚安装的 Node.js 路径
-                    let npm_cmd = format!("{}\\npm.cmd", nodejs_dir);
-                    app.emit("model-progress", format!("✅ Node.js 安装完成: {}", nodejs_dir)).ok();
-                    npm_cmd
-                }
-                Err(e) => {
-                    return Err(format!(
-                        "需要先安装 Node.js 才能继续。\n\n{}",
-                        e
-                    ));
-                }
+            if let Err(e) = install_nodejs_windows(&app).await {
+                return Err(format!("需要先安装 Node.js 才能继续。\n\n{}", e));
             }
         }
-    };
-    
-    #[cfg(not(target_os = "windows"))]
-    let npm_path = match npm_path {
-        Some(path) => path,
-        None => {
+        
+        #[cfg(not(target_os = "windows"))]
+        {
             return Err(
                 "未检测到 Node.js，请先安装：\n\
                 - Ubuntu/Debian: sudo apt install nodejs npm\n\
@@ -625,9 +600,9 @@ pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), String> {
                     .to_string(),
             );
         }
-    };
+    }
     
-    // 步骤2: 尝试多个镜像源安装 OpenClaw
+    // 步骤2: 使用 PowerShell 安装 OpenClaw（多个镜像源备选）
     let registries = vec![
         ("淘宝镜像", "https://registry.npmmirror.com"),
         ("腾讯镜像", "https://mirrors.cloud.tencent.com/npm/"),
@@ -642,11 +617,22 @@ pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), String> {
         
         #[cfg(target_os = "windows")]
         let result = {
-            // Windows 下使用 cmd 执行 npm
-            Command::new("cmd")
+            // 使用 PowerShell 执行 npm 安装
+            Command::new("powershell")
                 .args(&[
-                    "/c",
-                    &npm_path,
+                    "-Command",
+                    &format!(
+                        "npm install -g openclaw@latest --registry {}",
+                        registry
+                    ),
+                ])
+                .output()
+        };
+        
+        #[cfg(not(target_os = "windows"))]
+        let result = {
+            Command::new("npm")
+                .args(&[
                     "install",
                     "-g",
                     "openclaw@latest",
@@ -658,7 +644,7 @@ pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), String> {
         
         #[cfg(not(target_os = "windows"))]
         let result = {
-            Command::new(&npm_path)
+            Command::new("npm")
                 .args(&[
                     "install",
                     "-g",
@@ -873,73 +859,37 @@ export OLLAMA_NUM_PARALLEL=2       # 并发请求数
 pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
     app.emit("model-progress", "正在启动 OpenClaw...".to_string()).ok();
     
-    // 尝试多种方式启动
-    let mut last_error = String::new();
-    
-    // 方法1: 直接运行 openclaw
-    let result1 = Command::new("openclaw")
-        .args(&["gateway", "start"])
-        .spawn();
-    
-    if result1.is_ok() {
-        app.emit("model-progress", "✅ OpenClaw 已启动".to_string()).ok();
-        return Ok("OpenClaw 已启动，请访问 http://localhost:3000".to_string());
-    }
-    last_error = "openclaw 命令不可用".to_string();
-    
-    // 方法2: 使用 npx
-    let result2 = Command::new("npx")
-        .args(&["openclaw", "gateway", "start"])
-        .spawn();
-    
-    if result2.is_ok() {
-        app.emit("model-progress", "✅ OpenClaw 已启动 (via npx)".to_string()).ok();
-        return Ok("OpenClaw 已启动，请访问 http://localhost:3000".to_string());
-    }
-    last_error = "npx 启动失败".to_string();
-    
-    // 方法3: Windows 上尝试 npm 全局目录
     #[cfg(target_os = "windows")]
     {
-        // 获取 npm 全局 bin 目录
-        let npm_bin = Command::new("npm")
-            .args(&["bin", "-g"])
-            .output();
+        // 使用 PowerShell 启动 OpenClaw
+        let result = Command::new("powershell")
+            .args(&[
+                "-NoProfile",
+                "-Command",
+                "Start-Process powershell -ArgumentList '-NoExit', '-Command', 'npx openclaw gateway start; Write-Host \"\"; Write-Host \"OpenClaw 已启动，请访问 http://localhost:3000\" -ForegroundColor Green; Write-Host \"按任意键关闭...\"; $null = $Host.UI.RawUI.ReadKey(\"NoEcho,IncludeKeyDown\")'",
+            ])
+            .spawn();
         
-        if let Ok(output) = npm_bin {
-            if output.status.success() {
-                let bin_dir = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                let openclaw_exe = format!("{}\\openclaw.cmd", bin_dir);
-                
-                let result3 = Command::new(&openclaw_exe)
-                    .args(&["gateway", "start"])
-                    .spawn();
-                
-                if result3.is_ok() {
-                    app.emit("model-progress", "✅ OpenClaw 已启动".to_string()).ok();
-                    return Ok("OpenClaw 已启动，请访问 http://localhost:3000".to_string());
-                }
-            }
+        if result.is_ok() {
+            app.emit("model-progress", "✅ OpenClaw 已启动".to_string()).ok();
+            return Ok("OpenClaw 已启动，请访问 http://localhost:3000".to_string());
         }
     }
     
-    // 提供手动启动指引
-    let manual_guide = r#"
-启动失败，请手动启动：
-
-方法1: 打开命令行，运行：
-  openclaw gateway start
-
-方法2: 如果命令不存在，运行：
-  npx openclaw gateway start
-
-方法3: 重新安装 OpenClaw：
-  npm install -g openclaw
-
-然后访问: http://localhost:3000
-"#;
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Linux/macOS 使用终端启动
+        let result = Command::new("npx")
+            .args(&["openclaw", "gateway", "start"])
+            .spawn();
+        
+        if result.is_ok() {
+            app.emit("model-progress", "✅ OpenClaw 已启动".to_string()).ok();
+            return Ok("OpenClaw 已启动，请访问 http://localhost:3000".to_string());
+        }
+    }
     
-    Err(manual_guide.to_string())
+    Err("启动失败。请打开命令行运行: npx openclaw gateway start".to_string())
 }
 
 /// 创建桌面快捷方式
@@ -951,92 +901,23 @@ pub async fn create_desktop_shortcut() -> Result<String, String> {
             .map(|p| format!("{}\\Desktop", p))
             .map_err(|_| "无法找到桌面目录".to_string())?;
         
-        // 查找 openclaw 的完整路径
-        let mut openclaw_path = String::new();
+        // 创建 VBScript 文件（避免编码问题，静默启动）
+        let vbs_path = format!("{}\\OpenClaw.vbs", desktop);
+        let vbs_content = r#"Set objShell = CreateObject("WScript.Shell")
+objShell.Run "powershell -NoExit -Command \"npx openclaw gateway start; Write-Host ''; Write-Host 'OpenClaw 已启动，请访问 http://localhost:3000' -ForegroundColor Green; Write-Host '按任意键关闭...'; $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')\"", 1, False
+"#;
         
-        // 1. 尝试 where 命令
-        if let Ok(output) = Command::new("where").arg("openclaw").output() {
-            if output.status.success() {
-                openclaw_path = String::from_utf8_lossy(&output.stdout)
-                    .lines()
-                    .next()
-                    .unwrap_or("")
-                    .trim()
-                    .to_string();
-            }
-        }
+        std::fs::write(&vbs_path, vbs_content).map_err(|e| format!("创建失败: {}", e))?;
         
-        // 2. 如果 where 找不到，检查常见路径
-        if openclaw_path.is_empty() {
-            let possible_paths = vec![
-                format!("{}\\AppData\\Roaming\\npm\\openclaw.cmd", std::env::var("USERPROFILE").unwrap_or_default()),
-                "C:\\Program Files\\nodejs\\openclaw.cmd".to_string(),
-                "C:\\Program Files (x86)\\nodejs\\openclaw.cmd".to_string(),
-            ];
-            
-            for path in &possible_paths {
-                if std::path::Path::new(path).exists() {
-                    openclaw_path = path.clone();
-                    break;
-                }
-            }
-        }
-        
-        // 3. 最后尝试 npm 全局目录
-        if openclaw_path.is_empty() {
-            if let Ok(output) = Command::new("npm").args(&["bin", "-g"]).output() {
-                if output.status.success() {
-                    let bin_dir = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    let openclaw_cmd = format!("{}\\openclaw.cmd", bin_dir);
-                    if std::path::Path::new(&openclaw_cmd).exists() {
-                        openclaw_path = openclaw_cmd;
-                    }
-                }
-            }
-        }
-        
-        // 创建 .bat 文件
+        // 也创建一个 bat 文件作为备选
         let bat_path = format!("{}\\OpenClaw.bat", desktop);
-        let bat_content = if openclaw_path.is_empty() {
-            // 使用 npx 作为备选
-            "@echo off
-chcp 65001 >nul
-echo 正在启动 OpenClaw...
-echo.
-npx openclaw gateway start
-if errorlevel 1 (
-    echo.
-    echo OpenClaw 启动失败！
-    echo 请确保已正确安装：npm install -g openclaw
-)
-echo.
-echo OpenClaw 已启动，请访问 http://localhost:3000
-echo 按任意键关闭此窗口...
-pause > nul
-".to_string()
-        } else {
-            format!(
-                "@echo off
-chcp 65001 >nul
-echo 正在启动 OpenClaw...
-echo.
-\"{}\" gateway start
-if errorlevel 1 (
-    echo OpenClaw 启动失败，尝试使用 npx...
-    npx openclaw gateway start
-)
-echo.
-echo OpenClaw 已启动，请访问 http://localhost:3000
-echo 按任意键关闭此窗口...
-pause > nul
-",
-                openclaw_path
-            )
-        };
-        
+        // 使用 PowerShell 来正确处理 UTF-8
+        let bat_content = "@echo off
+powershell -NoExit -Command \"chcp 65001 >$null; npx openclaw gateway start; Write-Host ''; Write-Host 'OpenClaw 已启动，请访问 http://localhost:3000' -ForegroundColor Green; Write-Host '按任意键关闭...'; $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')\"
+";
         std::fs::write(&bat_path, bat_content).map_err(|e| format!("创建失败: {}", e))?;
         
-        Ok("✅ 桌面快捷方式创建成功！双击 OpenClaw.bat 即可启动".to_string())
+        Ok("✅ 桌面快捷方式创建成功！\n- OpenClaw.vbs (静默启动)\n- OpenClaw.bat (带窗口启动)".to_string())
     }
     
     #[cfg(target_os = "macos")]
