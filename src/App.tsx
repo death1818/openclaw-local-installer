@@ -1036,9 +1036,12 @@ function App() {
                 {skill.installed ? (
                   skill.update_available ? (
                     <button
-                      onClick={() => updateSkill(skill.slug)}
+                      onClick={() => {
+                        console.log('Update button clicked:', skill.slug);
+                        updateSkill(skill.slug);
+                      }}
                       disabled={installingSkill === skill.slug}
-                      className="px-3 py-1 bg-yellow-500 text-white rounded text-sm hover:bg-yellow-600 disabled:opacity-50"
+                      className="px-3 py-1 bg-yellow-500 text-white rounded text-sm hover:bg-yellow-600 disabled:opacity-50 cursor-pointer"
                     >
                       {installingSkill === skill.slug ? '更新中...' : '更新'}
                     </button>
@@ -1047,9 +1050,12 @@ function App() {
                   )
                 ) : (
                   <button
-                    onClick={() => installSkill(skill.slug)}
+                    onClick={() => {
+                      console.log('Install button clicked:', skill.slug);
+                      installSkill(skill.slug);
+                    }}
                     disabled={installingSkill === skill.slug}
-                    className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 disabled:opacity-50"
+                    className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 disabled:opacity-50 cursor-pointer"
                   >
                     {installingSkill === skill.slug ? '安装中...' : '安装'}
                   </button>

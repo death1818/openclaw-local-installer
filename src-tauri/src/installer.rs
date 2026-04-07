@@ -952,47 +952,87 @@ pub async fn create_desktop_shortcut() -> Result<String, String> {
             .map_err(|_| "无法找到桌面目录".to_string())?;
         
         // 查找 openclaw 的完整路径
-        let real_target = if let Ok(output) = Command::new("where").arg("openclaw").output() {
+        let mut openclaw_path = String::new();
+        
+        // 1. 尝试 where 命令
+        if let Ok(output) = Command::new("where").arg("openclaw").output() {
             if output.status.success() {
-                String::from_utf8_lossy(&output.stdout)
+                openclaw_path = String::from_utf8_lossy(&output.stdout)
                     .lines()
                     .next()
-                    .unwrap_or("openclaw")
+                    .unwrap_or("")
                     .trim()
-                    .to_string()
-            } else {
-                // 尝试从 Node.js 全局目录查找
-                let npm_global = Command::new("npm")
-                    .args(&["root", "-g"])
-                    .output();
-                
-                if let Ok(npm_output) = npm_global {
-                    if npm_output.status.success() {
-                        let global_dir = String::from_utf8_lossy(&npm_output.stdout).trim().to_string();
-                        let openclaw_cmd = format!("{}\\openclaw\\bin\\openclaw.cmd", global_dir);
-                        if std::path::Path::new(&openclaw_cmd).exists() {
-                            openclaw_cmd
-                        } else {
-                            // 使用 npx 作为备选
-                            "npx openclaw".to_string()
-                        }
-                    } else {
-                        "npx openclaw".to_string()
-                    }
-                } else {
-                    "npx openclaw".to_string()
+                    .to_string();
+            }
+        }
+        
+        // 2. 如果 where 找不到，检查常见路径
+        if openclaw_path.is_empty() {
+            let possible_paths = vec![
+                format!("{}\\AppData\\Roaming\\npm\\openclaw.cmd", std::env::var("USERPROFILE").unwrap_or_default()),
+                "C:\\Program Files\\nodejs\\openclaw.cmd".to_string(),
+                "C:\\Program Files (x86)\\nodejs\\openclaw.cmd".to_string(),
+            ];
+            
+            for path in &possible_paths {
+                if std::path::Path::new(path).exists() {
+                    openclaw_path = path.clone();
+                    break;
                 }
             }
-        } else {
-            "npx openclaw".to_string()
-        };
+        }
+        
+        // 3. 最后尝试 npm 全局目录
+        if openclaw_path.is_empty() {
+            if let Ok(output) = Command::new("npm").args(&["bin", "-g"]).output() {
+                if output.status.success() {
+                    let bin_dir = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    let openclaw_cmd = format!("{}\\openclaw.cmd", bin_dir);
+                    if std::path::Path::new(&openclaw_cmd).exists() {
+                        openclaw_path = openclaw_cmd;
+                    }
+                }
+            }
+        }
         
         // 创建 .bat 文件
         let bat_path = format!("{}\\OpenClaw.bat", desktop);
-        let bat_content = format!(
-            "@echo off\necho 正在启动 OpenClaw...\n{} gateway start\nif errorlevel 1 (\n    echo OpenClaw 启动失败，尝试使用 npx...\n    npx openclaw gateway start\n)\necho.\necho OpenClaw 已启动，请访问 http://localhost:3000\necho 按任意键关闭此窗口...\npause > nul",
-            real_target
-        );
+        let bat_content = if openclaw_path.is_empty() {
+            // 使用 npx 作为备选
+            "@echo off
+chcp 65001 >nul
+echo 正在启动 OpenClaw...
+echo.
+npx openclaw gateway start
+if errorlevel 1 (
+    echo.
+    echo OpenClaw 启动失败！
+    echo 请确保已正确安装：npm install -g openclaw
+)
+echo.
+echo OpenClaw 已启动，请访问 http://localhost:3000
+echo 按任意键关闭此窗口...
+pause > nul
+".to_string()
+        } else {
+            format!(
+                "@echo off
+chcp 65001 >nul
+echo 正在启动 OpenClaw...
+echo.
+\"{}\" gateway start
+if errorlevel 1 (
+    echo OpenClaw 启动失败，尝试使用 npx...
+    npx openclaw gateway start
+)
+echo.
+echo OpenClaw 已启动，请访问 http://localhost:3000
+echo 按任意键关闭此窗口...
+pause > nul
+",
+                openclaw_path
+            )
+        };
         
         std::fs::write(&bat_path, bat_content).map_err(|e| format!("创建失败: {}", e))?;
         
