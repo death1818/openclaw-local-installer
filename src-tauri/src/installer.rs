@@ -876,13 +876,61 @@ pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
         // 创建临时 PowerShell 脚本
         let temp_dir = std::env::temp_dir();
         let ps1_path = temp_dir.join("start_openclaw.ps1");
-        let ps1_content = r#"Write-Host "正在启动 OpenClaw Gateway..." -ForegroundColor Cyan
+        let ps1_content = r#"# 设置编码为 UTF-8
+chcp 65001 > $null
+$OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "   OpenClaw Gateway 启动中..." -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "首次启动可能需要下载依赖，请耐心等待..." -ForegroundColor Yellow
 Write-Host ""
 
+# 查找 npx 路径
+$npxPaths = @(
+    "$env:APPDATA\npm\npx.cmd",
+    "$env:ProgramFiles\nodejs\npx.cmd",
+    "${env:ProgramFiles(x86)}\nodejs\npx.cmd",
+    "$env:LOCALAPPDATA\npm\npx.cmd"
+)
+
+$npxCmd = $null
+foreach ($path in $npxPaths) {
+    if (Test-Path $path) {
+        $npxCmd = $path
+        break
+    }
+}
+
+if (-not $npxCmd) {
+    # 尝试直接使用 npx（可能在 PATH 中）
+    $npxCmd = (Get-Command npx -ErrorAction SilentlyContinue).Source
+}
+
+if (-not $npxCmd) {
+    Write-Host "错误: 找不到 npx 命令" -ForegroundColor Red
+    Write-Host "请确保 Node.js 已安装并添加到 PATH" -ForegroundColor Yellow
+    Write-Host "" -ForegroundColor Yellow
+    Write-Host "按任意键关闭..."
+    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+    exit 1
+}
+
+Write-Host "使用 npx: $npxCmd" -ForegroundColor Gray
+Write-Host ""
+
 # 启动 OpenClaw（后台运行）
-Start-Process -FilePath "npx" -ArgumentList "openclaw","gateway","start" -NoNewWindow
+try {
+    Start-Process -FilePath $npxCmd -ArgumentList "openclaw","gateway","start" -NoNewWindow -ErrorAction Stop
+} catch {
+    Write-Host "启动失败: $_" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "按任意键关闭..."
+    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+    exit 1
+}
 
 # 等待服务启动
 Write-Host "等待服务启动..." -ForegroundColor Yellow

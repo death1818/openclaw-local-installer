@@ -151,6 +151,7 @@ function App() {
   
   // 启动器状态
   const [gatewayStatus, setGatewayStatus] = useState<'stopped' | 'starting' | 'running' | 'error'>('stopped')
+  const [startupProgress, setStartupProgress] = useState(0) // 0-100
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')
@@ -244,6 +245,7 @@ function App() {
       if (event.payload) {
         console.log('Gateway 已启动')
         setGatewayStatus('running')
+        setStartupProgress(100)
       }
     })
     
@@ -251,6 +253,31 @@ function App() {
       unlisten.then(fn => fn())
     }
   }, [])
+
+  // 监听启动进度
+  useEffect(() => {
+    const unlisten = listen<string>('model-progress', (event) => {
+      if (gatewayStatus === 'starting') {
+        // 根据消息更新进度
+        const msg = event.payload
+        if (msg.includes('检查') || msg.includes('环境')) {
+          setStartupProgress(10)
+        } else if (msg.includes('启动') || msg.includes('Starting')) {
+          setStartupProgress(30)
+        } else if (msg.includes('下载') || msg.includes('download')) {
+          setStartupProgress(50)
+        } else if (msg.includes('等待')) {
+          setStartupProgress(70)
+        } else if (msg.includes('成功') || msg.includes('✅')) {
+          setStartupProgress(90)
+        }
+      }
+    })
+    
+    return () => {
+      unlisten.then(fn => fn())
+    }
+  }, [gatewayStatus])
 
   // 授权码验证
   const handleLicenseSubmit = async () => {
@@ -1225,7 +1252,51 @@ function App() {
               <>
                 <div className="w-16 h-16 mb-4 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
                 <h2 className="text-xl font-semibold mb-2">正在启动 OpenClaw Gateway...</h2>
-                <p className="text-gray-500 dark:text-gray-400">首次启动可能需要下载依赖，请耐心等待</p>
+                <p className="text-gray-500 dark:text-gray-400 mb-6">首次启动可能需要下载依赖，请耐心等待</p>
+                
+                {/* 进度条动画 */}
+                <div className="w-64 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden mb-2">
+                  <div 
+                    className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all duration-500"
+                    style={{ width: `${startupProgress}%` }}
+                  />
+                </div>
+                <p className="text-sm text-gray-400 mb-4">{startupProgress}%</p>
+                
+                {/* 启动步骤提示 */}
+                <div className="text-left bg-gray-50 dark:bg-gray-800 rounded-lg p-4 max-w-sm">
+                  <div className="space-y-3 text-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center">
+                        <svg className="w-3 h-3 text-white animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                      </div>
+                      <span className="text-gray-700 dark:text-gray-300">检查运行环境...</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-5 h-5 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center">
+                        <span className="text-gray-500 text-xs">2</span>
+                      </div>
+                      <span className="text-gray-400">启动服务...</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-5 h-5 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center">
+                        <span className="text-gray-500 text-xs">3</span>
+                      </div>
+                      <span className="text-gray-400">等待响应...</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <style>{`
+                  @keyframes progress {
+                    0% { transform: translateX(-100%); }
+                    50% { transform: translateX(0%); }
+                    100% { transform: translateX(100%); }
+                  }
+                `}</style>
               </>
             ) : gatewayStatus === 'error' ? (
               <>
