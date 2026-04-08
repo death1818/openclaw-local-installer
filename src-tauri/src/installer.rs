@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::process::Command;
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
@@ -800,22 +800,38 @@ pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), String> {
 // 配置 OpenClaw - 直接创建 openclaw.yaml 配置文件
 #[tauri::command]
 pub async fn configure_openclaw(model_name: String, app: tauri::AppHandle) -> Result<String, String> {
-    app.emit("model-progress", "配置 OpenClaw...".to_string()).ok();
+    app.emit("model-progress", "=== 配置 OpenClaw ===".to_string()).ok();
     
     // OpenClaw 配置在用户主目录下的 .openclaw 文件夹
     let home_dir = std::env::var("USERPROFILE")
         .or_else(|_| std::env::var("HOME"))
-        .map_err(|_| "无法找到用户主目录")?;
+        .map_err(|e| {
+            app.emit("model-progress", format!("❌ 无法找到用户主目录: {}", e)).ok();
+            format!("无法找到用户主目录: {}", e)
+        })?;
+    
+    app.emit("model-progress", format!("主目录: {}", home_dir)).ok();
     
     let config_dir = std::path::PathBuf::from(&home_dir).join(".openclaw");
+    app.emit("model-progress", format!("配置目录: {}", config_dir.display())).ok();
     
-    fs::create_dir_all(&config_dir).await.map_err(|e| e.to_string())?;
+    // 创建配置目录（如果不存在）
+    if !config_dir.exists() {
+        app.emit("model-progress", "创建配置目录...".to_string()).ok();
+        fs::create_dir_all(&config_dir).await.map_err(|e| {
+            app.emit("model-progress", format!("❌ 创建目录失败: {}", e)).ok();
+            format!("创建配置目录失败: {}", e)
+        })?;
+        app.emit("model-progress", "✅ 配置目录已创建".to_string()).ok();
+    } else {
+        app.emit("model-progress", "✅ 配置目录已存在".to_string()).ok();
+    }
     
     let yaml_path = config_dir.join("openclaw.yaml");
+    app.emit("model-progress", format!("配置文件路径: {}", yaml_path.display())).ok();
     
     // 创建基本配置
-    let yaml_content = format!(r#"
-# OpenClaw 配置文件
+    let yaml_content = format!(r#"# OpenClaw 配置文件
 # 由安装器自动生成
 
 # 默认模型配置
@@ -832,8 +848,46 @@ gateway:
   host: 0.0.0.0
 "#, model_name);
     
-    fs::write(&yaml_path, yaml_content).await.map_err(|e| e.to_string())?;
-    app.emit("model-progress", format!("✅ 配置文件已创建: {}", yaml_path.display())).ok();
+    app.emit("model-progress", "写入配置文件...".to_string()).ok();
+    
+    // 尝试异步写入
+    match fs::write(&yaml_path, &yaml_content).await {
+        Ok(_) => {
+            app.emit("model-progress", "✅ 异步写入成功".to_string()).ok();
+        }
+        Err(e) => {
+            app.emit("model-progress", format!("⚠️ 异步写入失败: {}，尝试同步写入...", e)).ok();
+            
+            // 尝试使用标准库写入
+            match std::fs::write(&yaml_path, &yaml_content) {
+                Ok(_) => {
+                    app.emit("model-progress", "✅ 同步写入成功".to_string()).ok();
+                }
+                Err(e2) => {
+                    app.emit("model-progress", format!("❌ 同步写入也失败: {}", e2)).ok();
+                    return Err(format!("写入配置文件失败: {}", e2));
+                }
+            }
+        }
+    }
+    
+    // 验证文件是否创建成功
+    if yaml_path.exists() {
+        app.emit("model-progress", format!("✅ 配置文件已创建: {}", yaml_path.display())).ok();
+        
+        // 读取验证
+        match std::fs::read_to_string(&yaml_path) {
+            Ok(content) => {
+                app.emit("model-progress", format!("文件大小: {} 字节", content.len())).ok();
+            }
+            Err(e) => {
+                app.emit("model-progress", format!("⚠️ 读取验证失败: {}", e)).ok();
+            }
+        }
+    } else {
+        app.emit("model-progress", "❌ 文件创建失败，文件不存在".to_string()).ok();
+        return Err("配置文件创建失败".to_string());
+    }
     
     Ok("OpenClaw 配置完成".to_string())
 }
@@ -913,157 +967,277 @@ export OLLAMA_NUM_PARALLEL=2       # 并发请求数
     Ok(())
 }
 
-/// 启动 OpenClaw
-#[tauri::command]
-pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
-    app.emit("model-progress", "正在启动 OpenClaw...".to_string()).ok();
+/// 检查 Ollama 服务是否运行
+async fn check_ollama_service() -> bool {
+    if let Ok(client) = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .build()
+    {
+        client.get("http://127.0.0.1:11434/api/version")
+            .send().await
+            .map(|r| r.status().is_success())
+            .unwrap_or(false)
+    } else {
+        false
+    }
+}
+
+/// 启动 Ollama 服务
+async fn start_ollama_service(app: &tauri::AppHandle) -> Result<(), String> {
+    app.emit("model-progress", "检查 Ollama 服务...".to_string()).ok();
+    
+    if check_ollama_service().await {
+        app.emit("model-progress", "✅ Ollama 服务已运行".to_string()).ok();
+        return Ok(());
+    }
+    
+    app.emit("model-progress", "Ollama 服务未运行，尝试启动...".to_string()).ok();
     
     #[cfg(target_os = "windows")]
     {
-        // 先使用 reqwest 检查是否已经在运行
-        if let Ok(client) = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(2))
-            .build()
-        {
-            if let Ok(resp) = client.get("http://localhost:3000").send().await {
-                if resp.status().is_success() {
-                    app.emit("gateway-started", true).ok();
-                    app.emit("model-progress", "✅ OpenClaw 已在运行中".to_string()).ok();
-                    return Ok("OpenClaw 已在运行，访问 http://localhost:3000".to_string());
-                }
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        
+        // 查找 ollama 路径
+        let ollama_path = find_ollama_path(app);
+        let ollama_path = match ollama_path {
+            Some(p) => p,
+            None => return Err("找不到 Ollama，请先安装 Ollama".to_string())
+        };
+        
+        // 启动 ollama serve（后台运行）
+        Command::new(&ollama_path)
+            .arg("serve")
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|e| format!("启动 Ollama 失败: {}", e))?;
+        
+        // 等待服务启动
+        for i in 1..=30 {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            if check_ollama_service().await {
+                app.emit("model-progress", format!("✅ Ollama 服务已启动 ({}秒)", i / 2)).ok();
+                return Ok(());
             }
         }
         
-        app.emit("model-progress", "正在后台启动 OpenClaw Gateway...".to_string()).ok();
-        
-        // 创建启动脚本
-        let ps_script = r#"
-$Host.UI.RawUI.WindowTitle = "OpenClaw Gateway"
-Clear-Host
-
-Write-Host "========================================"
-Write-Host "   OpenClaw Gateway 启动中..."
-Write-Host "========================================"
-Write-Host ""
-
-# 设置环境变量
-$env:OLLAMA_NUM_CTX = "24576"
-$env:OLLAMA_HOST = "0.0.0.0"
-Write-Host "[OK] 环境变量已设置"
-Write-Host ""
-
-# 启动 OpenClaw
-Write-Host "正在启动 OpenClaw Gateway..."
-Write-Host ""
-
-try {
-    # 检查是否有 openclaw 命令
-    $openclaw = Get-Command openclaw -ErrorAction SilentlyContinue
-    
-    if ($openclaw) {
-        Write-Host "使用全局安装的 openclaw"
-        Write-Host "路径: $($openclaw.Source)"
-        Write-Host ""
-        
-        # 启动（前台运行）
-        & openclaw gateway start
-        
-    } else {
-        Write-Host "使用 npx 启动"
-        $env:npm_config_registry = "https://registry.npmmirror.com"
-        Write-Host "使用淘宝镜像加速"
-        Write-Host ""
-        
-        & npx openclaw gateway start
-    }
-    
-} catch {
-    Write-Host ""
-    Write-Host "错误: $_" -ForegroundColor Red
-}
-
-Write-Host ""
-Write-Host "========================================"
-Write-Host "按任意键关闭此窗口..."
-Write-Host "========================================"
-$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-"#;
-        
-        let temp_dir = std::env::temp_dir();
-        let ps1_path = temp_dir.join("start_openclaw.ps1");
-        
-        if let Err(e) = std::fs::write(&ps1_path, ps_script) {
-            return Err(format!("创建启动脚本失败: {}", e));
-        }
-        
-        // 使用 PowerShell 启动
-        let result = Command::new("cmd")
-            .args(&[
-                "/c",
-                "start",
-                "OpenClaw Gateway",
-                "powershell",
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                &ps1_path.to_string_lossy(),
-            ])
-            .spawn();
-        
-        if result.is_ok() {
-            app.emit("model-progress", "⏳ 等待 OpenClaw 启动...".to_string()).ok();
-            
-            // 在后台轮询检查服务是否启动，并发送进度事件
-            let app_clone = app.clone();
-            tokio::spawn(async move {
-                let mut progress = 10;
-                
-                // 最多等待 5 分钟（首次启动需要下载依赖）
-                for i in 0..150 {
-                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-                    
-                    // 更新进度（从10到90，150次循环每次+0.5）
-                    if progress < 90 {
-                        progress += 1;
-                        app_clone.emit("startup-progress", progress).ok();
-                    }
-                    
-                    if let Ok(client) = reqwest::Client::builder()
-                        .timeout(std::time::Duration::from_secs(2))
-                        .build()
-                    {
-                        if let Ok(resp) = client.get("http://localhost:3000").send().await {
-                            if resp.status().is_success() {
-                                app_clone.emit("startup-progress", 100).ok();
-                                app_clone.emit("gateway-started", true).ok();
-                                app_clone.emit("model-progress", "✅ OpenClaw 已启动成功！".to_string()).ok();
-                                return;
-                            }
-                        }
-                    }
-                }
-                app_clone.emit("model-progress", "⚠️ 启动超时，请查看控制台窗口".to_string()).ok();
-            });
-            
-            return Ok("OpenClaw 正在后台启动，请等待...".to_string());
-        }
+        Err("Ollama 服务启动超时".to_string())
     }
     
     #[cfg(not(target_os = "windows"))]
     {
-        // Linux/macOS
-        let result = Command::new("npx")
-            .args(&["openclaw", "gateway", "start"])
-            .spawn();
+        Command::new("ollama")
+            .arg("serve")
+            .spawn()
+            .map_err(|e| format!("启动 Ollama 失败: {}", e))?;
         
-        if result.is_ok() {
-            app.emit("model-progress", "✅ OpenClaw 已启动".to_string()).ok();
-            return Ok("OpenClaw 已启动，请访问 http://localhost:3000".to_string());
+        for i in 1..=30 {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            if check_ollama_service().await {
+                return Ok(());
+            }
         }
+        
+        Err("Ollama 服务启动超时".to_string())
+    }
+}
+
+/// 检查进程是否存在（Windows）
+#[cfg(target_os = "windows")]
+fn check_process_exists(process_name: &str) -> bool {
+    if let Ok(output) = Command::new("tasklist")
+        .args(&["/FI", &format!("IMAGENAME eq {}", process_name)])
+        .output()
+    {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        stdout.contains(process_name)
+    } else {
+        false
+    }
+}
+
+/// 检查端口是否被监听
+async fn check_port_listening(port: u16) -> bool {
+    if let Ok(client) = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .build()
+    {
+        let url = format!("http://127.0.0.1:{}", port);
+        client.get(&url).send().await.is_ok()
+    } else {
+        false
+    }
+}
+
+/// 启动 OpenClaw
+#[tauri::command]
+pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
+    app.emit("model-progress", "=== 启动 OpenClaw ===".to_string()).ok();
+    
+    #[cfg(target_os = "windows")]
+    {
+        // 步骤1: 检查是否已经在运行
+        app.emit("model-progress", "[1/4] 检查运行状态...".to_string()).ok();
+        app.emit("startup-progress", 5).ok();
+        
+        if check_port_listening(3000).await {
+            app.emit("model-progress", "✅ OpenClaw 已在运行中".to_string()).ok();
+            app.emit("startup-progress", 100).ok();
+            app.emit("gateway-started", true).ok();
+            return Ok("OpenClaw 已在运行，访问 http://localhost:3000".to_string());
+        }
+        
+        // 步骤2: 检查并启动 Ollama
+        app.emit("model-progress", "[2/4] 检查 Ollama 服务...".to_string()).ok();
+        app.emit("startup-progress", 10).ok();
+        
+        if let Err(e) = start_ollama_service(&app).await {
+            app.emit("model-progress", format!("⚠️ Ollama 启动失败: {}", e)).ok();
+            // 继续尝试启动 OpenClaw，可能用户已手动启动 Ollama
+        }
+        
+        // 步骤3: 检查 openclaw 命令是否存在
+        app.emit("model-progress", "[3/4] 检查 OpenClaw 命令...".to_string()).ok();
+        app.emit("startup-progress", 15).ok();
+        
+        let openclaw_cmd = Command::new("where").arg("openclaw").output();
+        let use_global = match openclaw_cmd {
+            Ok(output) => {
+                if output.status.success() {
+                    let path = String::from_utf8_lossy(&output.stdout);
+                    app.emit("model-progress", format!("✅ 找到 openclaw: {}", path.lines().next().unwrap_or("未知路径").trim())).ok();
+                    true
+                } else {
+                    app.emit("model-progress", "⚠️ 未找到全局 openclaw，将使用 npx".to_string()).ok();
+                    false
+                }
+            }
+            Err(_) => {
+                app.emit("model-progress", "⚠️ where 命令失败，将使用 npx".to_string()).ok();
+                false
+            }
+        };
+        
+        // 步骤4: 启动 OpenClaw Gateway
+        app.emit("model-progress", "[4/4] 启动 Gateway...".to_string()).ok();
+        app.emit("startup-progress", 20).ok();
+        
+        // 不创建脚本文件，直接在后台启动
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        
+        let spawn_result = if use_global {
+            app.emit("model-progress", "使用全局安装的 openclaw 启动...".to_string()).ok();
+            Command::new("openclaw")
+                .args(&["gateway", "start"])
+                .env("OLLAMA_NUM_CTX", "24576")
+                .env("OLLAMA_HOST", "0.0.0.0")
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn()
+        } else {
+            app.emit("model-progress", "使用 npx 启动（淘宝镜像加速）...".to_string()).ok();
+            Command::new("cmd")
+                .args(&["/c", "set npm_config_registry=https://registry.npmmirror.com && npx openclaw gateway start"])
+                .env("OLLAMA_NUM_CTX", "24576")
+                .env("OLLAMA_HOST", "0.0.0.0")
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn()
+        };
+        
+        match spawn_result {
+            Ok(_child) => {
+                app.emit("model-progress", "✅ 进程已启动，等待服务就绪...".to_string()).ok();
+            }
+            Err(e) => {
+                let err_msg = format!("启动进程失败: {}", e);
+                app.emit("model-progress", format!("❌ {}", err_msg)).ok();
+                return Err(err_msg);
+            }
+        }
+        
+        // 真实检测：轮询检查端口和响应
+        let app_clone = app.clone();
+        tokio::spawn(async move {
+            let start_time = std::time::Instant::now();
+            let max_wait_secs = 300; // 最多等待5分钟
+            
+            for i in 1..=max_wait_secs {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                
+                // 更新进度（从20到90）
+                let progress = 20 + ((i as f32 / max_wait_secs as f32) * 70.0) as i32;
+                if progress < 90 {
+                    app_clone.emit("startup-progress", progress).ok();
+                }
+                
+                // 每隔5秒输出一次等待信息
+                if i % 5 == 0 {
+                    app_clone.emit("model-progress", format!("等待中... ({}秒)", i)).ok();
+                }
+                
+                // 检查端口是否响应
+                if check_port_listening(3000).await {
+                    let elapsed = start_time.elapsed().as_secs();
+                    app_clone.emit("startup-progress", 100).ok();
+                    app_clone.emit("gateway-started", true).ok();
+                    app_clone.emit("model-progress", format!("✅ OpenClaw 启动成功！(耗时 {}秒)", elapsed)).ok();
+                    app_clone.emit("model-progress", "访问地址: http://localhost:3000".to_string()).ok();
+                    return;
+                }
+                
+                // 检查进程是否还在运行
+                if !check_process_exists("node.exe") && !check_process_exists("openclaw.exe") {
+                    // 给一点时间让进程启动
+                    if i > 10 {
+                        app_clone.emit("model-progress", "⚠️ 进程可能已退出，请检查日志".to_string()).ok();
+                    }
+                }
+            }
+            
+            // 超时
+            app_clone.emit("startup-progress", 0).ok();
+            app_clone.emit("model-progress", "❌ 启动超时，请手动运行: openclaw gateway start".to_string()).ok();
+        });
+        
+        return Ok("OpenClaw 正在启动中...".to_string());
     }
     
-    Err("启动失败。请打开命令行运行: npx openclaw gateway start".to_string())
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Linux/macOS - 简化版
+        if check_port_listening(3000).await {
+            app.emit("gateway-started", true).ok();
+            return Ok("OpenClaw 已在运行，访问 http://localhost:3000".to_string());
+        }
+        
+        // 启动 Ollama
+        let _ = start_ollama_service(&app).await;
+        
+        // 后台启动 OpenClaw
+        Command::new("openclaw")
+            .args(&["gateway", "start"])
+            .spawn()
+            .map_err(|e| format!("启动失败: {}", e))?;
+        
+        // 轮询检测
+        let app_clone = app.clone();
+        tokio::spawn(async move {
+            for i in 1..=300 {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                let progress = ((i as f32 / 300.0) * 80.0) as i32 + 10;
+                app_clone.emit("startup-progress", progress.min(90)).ok();
+                
+                if check_port_listening(3000).await {
+                    app_clone.emit("startup-progress", 100).ok();
+                    app_clone.emit("gateway-started", true).ok();
+                    return;
+                }
+            }
+            app_clone.emit("model-progress", "❌ 启动超时".to_string()).ok();
+        });
+        
+        Ok("OpenClaw 正在启动中...".to_string())
+    }
 }
 
 /// 创建桌面快捷方式
