@@ -812,87 +812,6 @@ pub async fn configure_openclaw(model_name: String, app: tauri::AppHandle) -> Re
     
     app.emit("model-progress", format!("主目录: {}", home_dir)).ok();
     
-    let config_dir = std::path::PathBuf::from(&home_dir).join(".openclaw");
-    app.emit("model-progress", format!("配置目录: {}", config_dir.display())).ok();
-    
-    // 如果目录存在但无法访问，尝试删除重建
-    if config_dir.exists() {
-        app.emit("model-progress", "配置目录已存在，检查权限...".to_string()).ok();
-        
-        // 测试是否可写
-        let test_file = config_dir.join(".write_test");
-        match std::fs::write(&test_file, "test") {
-            Ok(_) => {
-                let _ = std::fs::remove_file(&test_file);
-                app.emit("model-progress", "✅ 目录权限正常".to_string()).ok();
-            }
-            Err(e) => {
-                app.emit("model-progress", format!("⚠️ 权限问题: {}，尝试修复...", e)).ok();
-                
-                // 尝试删除并重建目录
-                match std::fs::remove_dir_all(&config_dir) {
-                    Ok(_) => {
-                        app.emit("model-progress", "已删除旧目录".to_string()).ok();
-                    }
-                    Err(e2) => {
-                        app.emit("model-progress", format!("⚠️ 无法删除: {}，尝试使用临时目录", e2)).ok();
-                        
-                        // 备选方案：使用临时目录
-                        let temp_config = std::env::temp_dir().join(".openclaw");
-                        app.emit("model-progress", format!("使用临时目录: {}", temp_config.display())).ok();
-                        
-                        let yaml_path = temp_config.join("openclaw.yaml");
-                        let yaml_content = format!(r#"# OpenClaw 配置文件
-# 由安装器自动生成
-
-# 默认模型配置
-model: {}
-
-# Ollama 配置
-ollama:
-  baseUrl: http://127.0.0.1:11434
-  contextTokens: 24576
-
-# Gateway 配置
-gateway:
-  port: 3000
-  host: 0.0.0.0
-"#, model_name);
-                        
-                        match std::fs::create_dir_all(&temp_config) {
-                            Ok(_) => match std::fs::write(&yaml_path, &yaml_content) {
-                                Ok(_) => {
-                                    app.emit("model-progress", format!("✅ 配置文件已创建: {}", yaml_path.display())).ok();
-                                    return Ok("OpenClaw 配置完成（临时目录）".to_string());
-                                }
-                                Err(e3) => {
-                                    return Err(format!("无法写入配置文件: {}", e3));
-                                }
-                            },
-                            Err(e3) => {
-                                return Err(format!("无法创建配置目录: {}", e3));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    // 创建配置目录（如果不存在）
-    if !config_dir.exists() {
-        app.emit("model-progress", "创建配置目录...".to_string()).ok();
-        fs::create_dir_all(&config_dir).await.map_err(|e| {
-            app.emit("model-progress", format!("❌ 创建目录失败: {}", e)).ok();
-            format!("创建配置目录失败: {}", e)
-        })?;
-        app.emit("model-progress", "✅ 配置目录已创建".to_string()).ok();
-    }
-    
-    let yaml_path = config_dir.join("openclaw.yaml");
-    app.emit("model-progress", format!("配置文件路径: {}", yaml_path.display())).ok();
-    
-    // 创建基本配置
     let yaml_content = format!(r#"# OpenClaw 配置文件
 # 由安装器自动生成
 
@@ -910,43 +829,52 @@ gateway:
   host: 0.0.0.0
 "#, model_name);
     
-    app.emit("model-progress", "写入配置文件...".to_string()).ok();
+    // 尝试多个配置目录（按优先级）
+    let config_paths = vec![
+        std::path::PathBuf::from(&home_dir).join(".openclaw"),
+        std::env::temp_dir().join(".openclaw"),
+        std::path::PathBuf::from(&home_dir).join("AppData\\Local\\openclaw"),
+    ];
     
-    // 尝试异步写入
-    match fs::write(&yaml_path, &yaml_content).await {
-        Ok(_) => {
-            app.emit("model-progress", "✅ 异步写入成功".to_string()).ok();
+    for (idx, config_dir) in config_paths.iter().enumerate() {
+        app.emit("model-progress", format!("尝试路径 {}: {}", idx + 1, config_dir.display())).ok();
+        
+        // 创建目录
+        if !config_dir.exists() {
+            match std::fs::create_dir_all(config_dir) {
+                Ok(_) => app.emit("model-progress", "目录创建成功".to_string()).ok(),
+                Err(e) => {
+                    app.emit("model-progress", format!("创建目录失败: {}", e)).ok();
+                    continue;
+                }
+            }
         }
-        Err(e) => {
-            app.emit("model-progress", format!("⚠️ 异步写入失败: {}，尝试同步写入...", e)).ok();
-            
-            // 尝试使用标准库写入
-            match std::fs::write(&yaml_path, &yaml_content) {
-                Ok(_) => {
-                    app.emit("model-progress", "✅ 同步写入成功".to_string()).ok();
+        
+        // 测试写入权限
+        let yaml_path = config_dir.join("openclaw.yaml");
+        match std::fs::write(&yaml_path, &yaml_content) {
+            Ok(_) => {
+                app.emit("model-progress", format!("✅ 配置文件已创建: {}", yaml_path.display())).ok();
+                
+                // 验证文件
+                if yaml_path.exists() {
+                    app.emit("model-progress", "✅ 配置文件验证通过".to_string()).ok();
+                    return Ok("OpenClaw 配置完成".to_string());
                 }
-                Err(e2) => {
-                    app.emit("model-progress", format!("❌ 同步写入也失败: {}", e2)).ok();
-                    return Err(format!("写入配置文件失败: {}", e2));
-                }
+            }
+            Err(e) => {
+                app.emit("model-progress", format!("写入失败: {}", e)).ok();
+                continue;
             }
         }
     }
     
-    // 验证文件是否创建成功
-    if yaml_path.exists() {
-        app.emit("model-progress", format!("✅ 配置文件已创建: {}", yaml_path.display())).ok();
-        
-        // 读取验证
-        match std::fs::read_to_string(&yaml_path) {
-            Ok(content) => {
-                app.emit("model-progress", format!("文件大小: {} 字节", content.len())).ok();
-            }
-            Err(e) => {
-                app.emit("model-progress", format!("⚠️ 读取验证失败: {}", e)).ok();
-            }
-        }
-    } else {
+    // 如果所有路径都失败，跳过配置文件创建
+    app.emit("model-progress", "⚠️ 所有路径都失败，跳过配置文件创建".to_string()).ok();
+    app.emit("model-progress", "OpenClaw 将使用默认配置启动".to_string()).ok();
+    
+    Ok("OpenClaw 配置跳过（将使用默认配置）".to_string())
+}
         app.emit("model-progress", "❌ 文件创建失败，文件不存在".to_string()).ok();
         return Err("配置文件创建失败".to_string());
     }
