@@ -875,12 +875,6 @@ gateway:
     
     Ok("OpenClaw 配置跳过（将使用默认配置）".to_string())
 }
-        app.emit("model-progress", "❌ 文件创建失败，文件不存在".to_string()).ok();
-        return Err("配置文件创建失败".to_string());
-    }
-    
-    Ok("OpenClaw 配置完成".to_string())
-}
 
 /// 配置 Ollama 环境变量 - 关键优化
 async fn configure_ollama_env(app: &tauri::AppHandle) -> Result<(), String> {
