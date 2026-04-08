@@ -842,7 +842,9 @@ gateway:
         // 创建目录
         if !config_dir.exists() {
             match std::fs::create_dir_all(config_dir) {
-                Ok(_) => app.emit("model-progress", "目录创建成功".to_string()).ok(),
+                Ok(_) => {
+                    app.emit("model-progress", "目录创建成功".to_string()).ok();
+                }
                 Err(e) => {
                     app.emit("model-progress", format!("创建目录失败: {}", e)).ok();
                     continue;
