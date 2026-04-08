@@ -815,6 +815,70 @@ pub async fn configure_openclaw(model_name: String, app: tauri::AppHandle) -> Re
     let config_dir = std::path::PathBuf::from(&home_dir).join(".openclaw");
     app.emit("model-progress", format!("配置目录: {}", config_dir.display())).ok();
     
+    // 如果目录存在但无法访问，尝试删除重建
+    if config_dir.exists() {
+        app.emit("model-progress", "配置目录已存在，检查权限...".to_string()).ok();
+        
+        // 测试是否可写
+        let test_file = config_dir.join(".write_test");
+        match std::fs::write(&test_file, "test") {
+            Ok(_) => {
+                let _ = std::fs::remove_file(&test_file);
+                app.emit("model-progress", "✅ 目录权限正常".to_string()).ok();
+            }
+            Err(e) => {
+                app.emit("model-progress", format!("⚠️ 权限问题: {}，尝试修复...", e)).ok();
+                
+                // 尝试删除并重建目录
+                match std::fs::remove_dir_all(&config_dir) {
+                    Ok(_) => {
+                        app.emit("model-progress", "已删除旧目录".to_string()).ok();
+                    }
+                    Err(e2) => {
+                        app.emit("model-progress", format!("⚠️ 无法删除: {}，尝试使用临时目录", e2)).ok();
+                        
+                        // 备选方案：使用临时目录
+                        let temp_config = std::env::temp_dir().join(".openclaw");
+                        app.emit("model-progress", format!("使用临时目录: {}", temp_config.display())).ok();
+                        
+                        let yaml_path = temp_config.join("openclaw.yaml");
+                        let yaml_content = format!(r#"# OpenClaw 配置文件
+# 由安装器自动生成
+
+# 默认模型配置
+model: {}
+
+# Ollama 配置
+ollama:
+  baseUrl: http://127.0.0.1:11434
+  contextTokens: 24576
+
+# Gateway 配置
+gateway:
+  port: 3000
+  host: 0.0.0.0
+"#, model_name);
+                        
+                        match std::fs::create_dir_all(&temp_config) {
+                            Ok(_) => match std::fs::write(&yaml_path, &yaml_content) {
+                                Ok(_) => {
+                                    app.emit("model-progress", format!("✅ 配置文件已创建: {}", yaml_path.display())).ok();
+                                    return Ok("OpenClaw 配置完成（临时目录）".to_string());
+                                }
+                                Err(e3) => {
+                                    return Err(format!("无法写入配置文件: {}", e3));
+                                }
+                            },
+                            Err(e3) => {
+                                return Err(format!("无法创建配置目录: {}", e3));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
     // 创建配置目录（如果不存在）
     if !config_dir.exists() {
         app.emit("model-progress", "创建配置目录...".to_string()).ok();
@@ -823,8 +887,6 @@ pub async fn configure_openclaw(model_name: String, app: tauri::AppHandle) -> Re
             format!("创建配置目录失败: {}", e)
         })?;
         app.emit("model-progress", "✅ 配置目录已创建".to_string()).ok();
-    } else {
-        app.emit("model-progress", "✅ 配置目录已存在".to_string()).ok();
     }
     
     let yaml_path = config_dir.join("openclaw.yaml");
