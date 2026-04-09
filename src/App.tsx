@@ -1282,14 +1282,14 @@ function App() {
               try {
                 setGatewayStatus('starting')
                 setError('')
-                await invoke<string>('deploy_docker')
+                const result = await invoke<string>('deploy_docker')
                 setDockerMode(true)
                 localStorage.setItem('openclaw_docker_deployed', 'true')
                 setGatewayStatus('running')
                 alert('Docker 部署成功！请访问 http://localhost:3000')
               } catch (err) {
                 setGatewayStatus('error')
-                setError(String(err))
+                setError(String(err) + '\n\n如 Docker 未安装，请下载：https://shiping.ku1818.com.cn/openclaw/Docker%20Desktop%20Installer.exe')
               }
             }}
             className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 flex items-center gap-2"
@@ -1299,6 +1299,18 @@ function App() {
             </svg>
             Docker 一键部署
           </button>
+        )}
+        
+        {/* Docker 下载链接 */}
+        {!dockerMode && (
+          <a
+            href="https://shiping.ku1818.com.cn/openclaw/Docker%20Desktop%20Installer.exe"
+            target="_blank"
+            className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            title="下载 Docker Desktop"
+          >
+            Docker 下载
+          </a>
         )}
         
         <div className="flex items-center gap-2">
