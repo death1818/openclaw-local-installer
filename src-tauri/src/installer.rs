@@ -1134,10 +1134,10 @@ pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn()
         } else {
-            app.emit("model-progress", "使用 npx 启动（淘宝镜像加速）...".to_string()).ok();
-            // 使用完整路径避免 ENOENT 错误
+            app.emit("model-progress", "使用 npx openclaw gateway run 启动...".to_string()).ok();
+            // 使用 openclaw gateway run 替代 gateway start
             Command::new("C:\\Windows\\System32\\cmd.exe")
-                .args(&["/c", "set npm_config_registry=https://registry.npmmirror.com && npx openclaw gateway start"])
+                .args(&["/c", "set npm_config_registry=https://registry.npmmirror.com && npx -y openclaw gateway run"])
                 .env("OLLAMA_NUM_CTX", "24576")
                 .env("OLLAMA_HOST", "0.0.0.0")
                 .creation_flags(CREATE_NO_WINDOW)
