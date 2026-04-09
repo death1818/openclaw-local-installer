@@ -1485,12 +1485,12 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
                 .output();
             
             Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-local -p 18789:18789 -v \"$env:USERPROFILE\\.openclaw:/home/user/.openclaw\" --add-host=host.docker.internal:host-gateway ghcr.io/openclaw/openclaw:latest"])
+                .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-local -p 18789:18789 -v \"$env:USERPROFILE\\.openclaw:/home/node/.openclaw\" --add-host=host.docker.internal:host-gateway ghcr.io/openclaw/openclaw:latest"])
                 .creation_flags(CREATE_NO_WINDOW)
                 .output()
         } else {
             Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-local -p 18789:18789 -v \"$env:USERPROFILE\\.openclaw:/home/user/.openclaw\" --add-host=host.docker.internal:host-gateway ghcr.io/openclaw/openclaw:latest"])
+                .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-local -p 18789:18789 -v \"$env:USERPROFILE\\.openclaw:/home/node/.openclaw\" --add-host=host.docker.internal:host-gateway ghcr.io/openclaw/openclaw:latest"])
                 .creation_flags(CREATE_NO_WINDOW)
                 .output()
         };
