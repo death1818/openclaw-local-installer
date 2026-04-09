@@ -629,11 +629,30 @@ function App() {
       </div>
 
       <button
-        onClick={() => setStep('license')}
+        onClick={() => {
+          // 直接进入 Docker 部署模式
+          setDockerMode(true)
+          localStorage.setItem('openclaw_docker_deployed', 'true')
+          setStep('launcher')
+        }}
         className="px-8 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg font-medium hover:opacity-90 transition-opacity shadow-lg"
       >
         开始安装
       </button>
+
+      <div className="mt-4">
+        <button
+          onClick={() => {
+            // 直接跳过，使用 Docker 模式
+            setDockerMode(true)
+            localStorage.setItem('openclaw_docker_deployed', 'true')
+            setStep('launcher')
+          }}
+          className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+        >
+          跳过，直接使用 Docker 模式 →
+        </button>
+      </div>
 
       {/* 公司署名 */}
       <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
