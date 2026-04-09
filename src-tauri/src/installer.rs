@@ -1508,7 +1508,26 @@ providers:
                     app.emit("model-progress", "等待服务就绪...".to_string()).ok();
                     std::thread::sleep(std::time::Duration::from_secs(5));
                     
-                    return Ok("Docker 部署成功！请访问 http://localhost:18789".to_string());
+                    // 尝试读取 Gateway 的实际 token
+                    let config_path = std::path::PathBuf::from(&config_dir).join("openclaw.yaml");
+                    let token_info = if config_path.exists() {
+                        if let Ok(content) = std::fs::read_to_string(&config_path) {
+                            // 从配置文件中提取 token
+                            for line in content.lines() {
+                                if line.contains("token:") {
+                                    let token = line.split(":").nth(1).map(|s| s.trim()).unwrap_or("");
+                                    if !token.is_empty() {
+                                        return Ok(format!("Docker 部署成功！\n\n请访问 http://localhost:18789 \n\n网关令牌: {}", token));
+                                    }
+                                }
+                            }
+                        }
+                        "请查看配置文件中的 token".to_string()
+                    } else {
+                        "请查看配置文件中的 token".to_string()
+                    };
+                    
+                    return Ok(format!("Docker 部署成功！请访问 http://localhost:18789\n\n{}", token_info));
                 } else {
                     let err = String::from_utf8_lossy(&output.stderr);
                     return Err(format!("容器启动失败: {}", err));
