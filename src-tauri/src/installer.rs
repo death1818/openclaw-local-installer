@@ -1391,7 +1391,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         // 步骤2: 拉取 OpenClaw 镜像
         app.emit("model-progress", "[2/4] 拉取 OpenClaw 镜像...".to_string()).ok();
         let pull_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", "docker pull openclai/openclaw:latest"])
+            .args(&["-NoProfile", "-Command", "docker pull ghcr.io/openclaw/openclaw:latest"])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         
@@ -1446,7 +1446,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         
         // 启动新容器
         let run_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-local -p 3000:3000 -v \"$env:USERPROFILE\\.openclaw:/home/user/.openclaw\" --add-host=host.docker.internal:host-gateway openclai/openclaw:latest"])
+            .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-local -p 3000:3000 -v \"$env:USERPROFILE\\.openclaw:/home/user/.openclaw\" --add-host=host.docker.internal:host-gateway ghcr.io/openclaw/openclaw:latest"])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         
