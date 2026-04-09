@@ -1124,20 +1124,37 @@ pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         
+        // 诊断：检查 npx 是否可用
+        let npx_check = Command::new("C:\\Windows\\System32\\where.exe").arg("npx").output();
+        match npx_check {
+            Ok(output) => {
+                if output.status.success() {
+                    let npx_path = String::from_utf8_lossy(&output.stdout);
+                    app.emit("model-progress", format!("✅ npx 路径: {}", npx_path.lines().next().unwrap_or("未知").trim())).ok();
+                } else {
+                    app.emit("model-progress", "⚠️ npx 未找到".to_string()).ok();
+                }
+            }
+            Err(e) => {
+                app.emit("model-progress", format!("⚠️ npx 检查失败: {}", e)).ok();
+            }
+        }
+        
         let spawn_result = if use_global {
             app.emit("model-progress", "使用全局安装的 openclaw 启动...".to_string()).ok();
-            // 使用 cmd.exe 运行 openclaw 避免 ENOENT
-            Command::new("C:\\Windows\\System32\\cmd.exe")
-                .args(&["/c", "openclaw gateway start"])
+            // 使用 PowerShell 启动，避免 cmd.exe 的问题
+            Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                .args(&["-NoProfile", "-Command", "openclaw gateway start"])
                 .env("OLLAMA_NUM_CTX", "24576")
                 .env("OLLAMA_HOST", "0.0.0.0")
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn()
         } else {
             app.emit("model-progress", "使用 npx 启动（淘宝镜像加速）...".to_string()).ok();
-            // 使用完整路径避免 ENOENT 错误
-            Command::new("C:\\Windows\\System32\\cmd.exe")
-                .args(&["/c", "set npm_config_registry=https://registry.npmmirror.com && npx openclaw gateway start"])
+            // 使用 PowerShell 启动
+            let npx_cmd = "set npm_config_registry=https://registry.npmmirror.com && npx openclaw gateway start";
+            Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                .args(&["-NoProfile", "-Command", &format!("$env:npm_config_registry='https://registry.npmmirror.com'; npx openclaw gateway start")])
                 .env("OLLAMA_NUM_CTX", "24576")
                 .env("OLLAMA_HOST", "0.0.0.0")
                 .creation_flags(CREATE_NO_WINDOW)

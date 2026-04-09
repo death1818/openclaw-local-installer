@@ -15,6 +15,7 @@ permissions:
   contents: write
 
 jobs:
+  # 首先在所有平台上构建
   build:
     strategy:
       fail-fast: false
@@ -57,14 +58,46 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
+      # 只构建，不发布
       - name: Build the app
-        uses: tauri-apps/tauri-action@v0
+        run: npm run tauri build ${{ matrix.args }}
+
+      # 上传构建产物到 artifacts
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}-bundle
+          path: |
+            src-tauri/target/release/bundle/**/*
+          retention-days: 5
+
+  # 只在一个平台上发布 release
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: 'OpenClaw Local Installer ${{ github.ref_name }}'
+          body: 'See CHANGELOG.md for details.'
+          draft: true
+          prerelease: false
+          files: |
+            artifacts/**/*.exe
+            artifacts/**/*.msi
+            artifacts/**/*.dmg
+            artifacts/**/*.deb
+            artifacts/**/*.rpm
+            artifacts/**/*.AppImage
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.event.inputs.version || github.ref_name }}
-          releaseName: 'OpenClaw Local Installer ${{ github.event.inputs.version || github.ref_name }}'
-          releaseBody: 'See CHANGELOG.md for details.'
-          releaseDraft: true
-          prerelease: false
-          args: ${{ matrix.args }}
