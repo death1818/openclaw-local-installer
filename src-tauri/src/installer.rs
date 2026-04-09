@@ -1439,21 +1439,36 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         let config_dir = format!("{}\\.openclaw", std::env::var("USERPROFILE").unwrap_or_default());
         std::fs::create_dir_all(&config_dir).ok();
         
-        // 创建简单的 openclaw.yaml
-        let config_content = r#"gateway:
+        // 创建 openclaw.yaml 配置文件
+        let config_path = std::path::PathBuf::from(&config_dir).join("openclaw.yaml");
+        
+        let config_content = r#"# OpenClaw 本地配置
+gateway:
   mode: local
-  bind: 0.0.0.0
+  bind: "0.0.0.0"
+  port: 18789
   auth:
-    token: local-dev-token-12345
+    token: "local-dev-token-12345"
+
+# 本地 Ollama 配置
 ollama:
-  url: http://host.docker.internal:11434
+  url: "http://host.docker.internal:11434"
+
+# 模型提供商
 providers:
   local:
     type: ollama
     models:
-      - qwen3:14b
+      - "qwen3:14b"
 "#;
-        std::fs::write(format!("{}\\openclaw.yaml", config_dir), config_content).ok();
+        
+        // 确保目录存在
+        let config_dir_path = std::path::PathBuf::from(&config_dir);
+        std::fs::create_dir_all(&config_dir_path).ok();
+        
+        // 写入配置文件
+        std::fs::write(&config_path, config_content).ok();
+        app.emit("model-progress", &format!("✅ 配置已创建: {:?}", config_path)).ok();
         app.emit("model-progress", "✅ 配置已创建".to_string()).ok();
         
         // 步骤5: 启动容器
