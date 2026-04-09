@@ -1368,10 +1368,10 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         
-        // 步骤1: 检查 Docker
+        // 步骤1: 检查 Docker - 使用 PowerShell
         app.emit("model-progress", "[1/4] 检查 Docker...".to_string()).ok();
-        let docker_check = Command::new("C:\\Windows\\System32\\cmd.exe")
-            .args(&["/c", "docker version"])
+        let docker_check = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-NoProfile", "-Command", "docker version"])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         
@@ -1390,8 +1390,8 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         
         // 步骤2: 拉取 OpenClaw 镜像
         app.emit("model-progress", "[2/4] 拉取 OpenClaw 镜像...".to_string()).ok();
-        let pull_result = Command::new("C:\\Windows\\System32\\cmd.exe")
-            .args(&["/c", "docker pull openclai/openclaw:latest"])
+        let pull_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-NoProfile", "-Command", "docker pull openclai/openclaw:latest"])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         
@@ -1400,8 +1400,6 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
                 if !output.status.success() {
                     let err = String::from_utf8_lossy(&output.stderr);
                     app.emit("model-progress", format!("⚠️ 拉取镜像失败: {}", err)).ok();
-                    // 尝试构建
-                    app.emit("model-progress", "尝试从源码构建...".to_string()).ok();
                 } else {
                     app.emit("model-progress", "✅ 镜像拉取成功".to_string()).ok();
                 }
@@ -1440,15 +1438,15 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         app.emit("model-progress", "[4/4] 启动容器...".to_string()).ok();
         
         // 先停止旧容器
-        Command::new("C:\\Windows\\System32\\cmd.exe")
-            .args(&["/c", "docker stop openclaw-local 2>nul || docker rm openclaw-local 2>nul || echo done"])
+        Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-NoProfile", "-Command", "docker stop openclaw-local -ErrorAction SilentlyContinue; docker rm openclaw-local -ErrorAction SilentlyContinue; Write-Host 'cleaned'"])
             .creation_flags(CREATE_NO_WINDOW)
             .output()
             .ok();
         
         // 启动新容器
-        let run_result = Command::new("C:\\Windows\\System32\\cmd.exe")
-            .args(&["/c", r"docker run -d --name openclaw-local -p 3000:3000 -v %USERPROFILE%\.openclaw:/home/user/.openclaw --add-host=host.docker.internal:host-gateway openclai/openclaw:latest"])
+        let run_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-local -p 3000:3000 -v \"$env:USERPROFILE\\.openclaw:/home/user/.openclaw\" --add-host=host.docker.internal:host-gateway openclai/openclaw:latest"])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         
