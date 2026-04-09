@@ -1492,10 +1492,11 @@ function App() {
                 <div className="text-left bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 max-w-md">
                   <h3 className="font-semibold mb-2 text-blue-700 dark:text-blue-300">使用说明</h3>
                   <ol className="text-sm text-gray-600 dark:text-gray-400 space-y-2">
-                    <li>1. 点击「启动 Gateway」按钮</li>
-                    <li>2. 等待服务启动完成</li>
-                    <li>3. 自动打开 Web 界面</li>
-                    <li>4. 开始与 AI 对话</li>
+                    <li>1. Docker 一键部署完成</li>
+                    <li>2. 点击「启动 Gateway」按钮</li>
+                    <li>3. 等待服务启动完成</li>
+                    <li>4. 自动打开 Web 界面</li>
+                    <li>5. 开始与 AI 对话</li>
                   </ol>
                 </div>
               </>
