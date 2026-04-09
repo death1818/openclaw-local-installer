@@ -60,6 +60,7 @@ jobs:
 
       # 只构建，不发布
       - name: Build the app
+        shell: bash
         run: |
           if [ "${{ matrix.platform }}" = "macos-latest" ]; then
             npm run tauri build -- --target universal-apple-darwin
