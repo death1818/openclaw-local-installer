@@ -1282,7 +1282,7 @@ function App() {
               try {
                 setGatewayStatus('starting')
                 setError('')
-                const _result = await invoke<string>('deploy_docker')
+                await invoke<string>('deploy_docker')
                 setDockerMode(true)
                 localStorage.setItem('openclaw_docker_deployed', 'true')
                 setGatewayStatus('running')
