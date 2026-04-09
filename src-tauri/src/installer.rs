@@ -1464,7 +1464,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         
         // 先停止旧容器
         Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", "docker stop openclaw-local -ErrorAction SilentlyContinue; docker rm openclaw-local -ErrorAction SilentlyContinue; Write-Host 'cleaned'"])
+            .args(&["-NoProfile", "-Command", "docker rm -f openclaw-local -ErrorAction SilentlyContinue; Write-Host 'cleaned'"])
             .creation_flags(CREATE_NO_WINDOW)
             .output()
             .ok();
