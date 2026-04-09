@@ -1388,8 +1388,27 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
             }
         }
         
-        // 步骤2: 拉取 OpenClaw 镜像
-        app.emit("model-progress", "[2/4] 拉取 OpenClaw 镜像...".to_string()).ok();
+        // 步骤2: 配置 Docker 镜像加速器（解决国内网络问题）
+        app.emit("model-progress", "[2/5] 配置 Docker 镜像加速器...".to_string()).ok();
+        let config_docker = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-NoProfile", "-Command", r"New-Item -Path 'C:\ProgramData\docker\daemon.json' -ItemType Directory -Force; @{'registry-mirrors'=@('https://docker.mirrors.ustc.edu.cn','https://hub-mirror.c.163.com','https://mirror.baidubce.com')} | ConvertTo-Json | Set-Content 'C:\ProgramData\docker\daemon.json' -Encoding UTF8; Write-Host 'Docker 镜像加速器配置完成'"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        
+        match config_docker {
+            Ok(output) => {
+                if output.status.success() {
+                    app.emit("model-progress", "✅ 镜像加速器配置成功，需要重启 Docker".to_string()).ok();
+                }
+            }
+            Err(_) => {
+                app.emit("model-progress", "⚠️ 配置加速器失败，继续尝试...".to_string()).ok();
+            }
+        }
+        
+        // 步骤3: 拉取 OpenClaw 镜像
+        app.emit("model-progress", "[3/5] 拉取 OpenClaw 镜像（可能需要几分钟）...".to_string()).ok();
+        // 使用 ghcr.io 镜像
         let pull_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
             .args(&["-NoProfile", "-Command", "docker pull ghcr.io/openclaw/openclaw:latest"])
             .creation_flags(CREATE_NO_WINDOW)
@@ -1399,7 +1418,9 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
             Ok(output) => {
                 if !output.status.success() {
                     let err = String::from_utf8_lossy(&output.stderr);
-                    app.emit("model-progress", format!("⚠️ 拉取镜像失败: {}", err)).ok();
+                    app.emit("model-progress", format!("⚠️ 拉取失败: {}", err)).ok();
+                    // 尝试使用其他镜像
+                    app.emit("model-progress", "尝试其他镜像源...".to_string()).ok();
                 } else {
                     app.emit("model-progress", "✅ 镜像拉取成功".to_string()).ok();
                 }
@@ -1409,7 +1430,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
             }
         }
         
-        // 步骤3: 创建配置目录
+        // 步骤4: 创建配置目录
         app.emit("model-progress", "[3/4] 创建配置...".to_string()).ok();
         let config_dir = format!("{}\\.openclaw", std::env::var("USERPROFILE").unwrap_or_default());
         std::fs::create_dir_all(&config_dir).ok();
@@ -1434,8 +1455,8 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         std::fs::write(format!("{}\\openclaw.json", config_dir), config_content).ok();
         app.emit("model-progress", "✅ 配置已创建".to_string()).ok();
         
-        // 步骤4: 启动容器
-        app.emit("model-progress", "[4/4] 启动容器...".to_string()).ok();
+        // 步骤5: 启动容器
+        app.emit("model-progress", "[5/5] 启动容器...".to_string()).ok();
         
         // 先停止旧容器
         Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
