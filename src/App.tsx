@@ -1297,34 +1297,32 @@ function App() {
           {gatewayStatus === 'starting' ? '启动中...' : gatewayStatus === 'running' ? '已启动' : dockerMode ? '打开 Web 界面' : '启动 Gateway'}
         </button>
         
-        {/* Docker 部署按钮（仅非 Docker 模式显示） */}
-        {!dockerMode && (
-          <button
-            onClick={async () => {
-              try {
-                setGatewayStatus('starting')
-                setError('')
-                await invoke<string>('deploy_docker')
-                setDockerMode(true)
-                localStorage.setItem('openclaw_docker_deployed', 'true')
-                setGatewayStatus('running')
-                alert('Docker 部署成功！请访问 http://localhost:18789')
-              } catch (err) {
-                setGatewayStatus('error')
-                setError(String(err) + '\n\n如 Docker 未安装，请下载：https://shiping.ku1818.com.cn/openclaw/Docker%20Desktop%20Installer.exe')
-              }
-            }}
-            className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2" />
-            </svg>
-            Docker 一键部署
-          </button>
-        )}
+        {/* Docker 部署按钮 */}
+        <button
+          onClick={async () => {
+            try {
+              setGatewayStatus('starting')
+              setError('')
+              await invoke<string>('deploy_docker')
+              setDockerMode(true)
+              localStorage.setItem('openclaw_docker_deployed', 'true')
+              setGatewayStatus('running')
+              alert('Docker 部署成功！请访问 http://localhost:18789')
+            } catch (err) {
+              setGatewayStatus('error')
+              setError(String(err) + '\n\n如 Docker 未安装，请下载：https://shiping.ku1818.com.cn/openclaw/Docker%20Desktop%20Installer.exe')
+            }
+          }}
+          className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 flex items-center gap-2"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2" />
+          </svg>
+          Docker 一键部署
+        </button>
         
         {/* Docker 下载链接 */}
-        {!dockerMode && (
+        {true && (
           <a
             href="https://shiping.ku1818.com.cn/openclaw/Docker%20Desktop%20Installer.exe"
             target="_blank"
