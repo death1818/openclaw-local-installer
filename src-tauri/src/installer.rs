@@ -1439,24 +1439,21 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         let config_dir = format!("{}\\.openclaw", std::env::var("USERPROFILE").unwrap_or_default());
         std::fs::create_dir_all(&config_dir).ok();
         
-        // 创建简单的 openclaw.json
-        let config_content = r#"{
-  "gateway": {
-    "auth": {
-      "token": "local-dev-token-12345"
-    },
-    "ollama": {
-      "url": "http://host.docker.internal:11434"
-    }
-  },
-  "providers": {
-    "local": {
-      "type": "ollama",
-      "models": ["qwen3:14b"]
-    }
-  }
-}"#;
-        std::fs::write(format!("{}\\openclaw.json", config_dir), config_content).ok();
+        // 创建简单的 openclaw.yaml
+        let config_content = r#"gateway:
+  mode: local
+  bind: 0.0.0.0
+  auth:
+    token: local-dev-token-12345
+ollama:
+  url: http://host.docker.internal:11434
+providers:
+  local:
+    type: ollama
+    models:
+      - qwen3:14b
+"#;
+        std::fs::write(format!("{}\\openclaw.yaml", config_dir), config_content).ok();
         app.emit("model-progress", "✅ 配置已创建".to_string()).ok();
         
         // 步骤5: 启动容器
