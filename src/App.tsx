@@ -1302,7 +1302,7 @@ function App() {
               setDockerMode(true)
               localStorage.setItem('openclaw_docker_deployed', 'true')
               setGatewayStatus('running')
-              alert('Docker 部署成功！请访问 http://localhost:18789')
+              alert('Docker 部署成功！\n\n请访问 http://localhost:18789 \n\n网关令牌（复制粘贴）：local-dev-token-12345')
             } catch (err) {
               setGatewayStatus('error')
               setError(String(err) + '\n\n如 Docker 未安装，请下载：https://shiping.ku1818.com.cn/openclaw/Docker%20Desktop%20Installer.exe')
