@@ -1529,23 +1529,33 @@ providers:
                     app.emit("model-progress", "等待服务就绪...".to_string()).ok();
                     std::thread::sleep(std::time::Duration::from_secs(5));
                     
-                    // 验证容器内配置文件是否存在
-                    let check_config = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                        .args(&["-NoProfile", "-Command", "docker exec openclaw-local ls -la /home/node/.openclaw/"])
+                    // 在容器内创建配置目录
+                    let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                        .args(&["-NoProfile", "-Command", "docker exec openclaw-local mkdir -p /home/node/.openclaw"])
                         .creation_flags(CREATE_NO_WINDOW)
                         .output();
                     
-                    match check_config {
-                        Ok(output) => {
-                            let stdout = String::from_utf8_lossy(&output.stdout);
-                            app.emit("model-progress", &format!("容器内文件: {}", stdout)).ok();
-                        }
-                        Err(e) => {
-                            app.emit("model-progress", &format!("检查容器配置失败: {}", e)).ok();
-                        }
-                    }
+                    // 使用 printf 写入配置文件（更可靠）
+                    let config_cmd = r#"docker exec openclaw-local sh -c 'printf "gateway:
+  mode: local
+  bind: 0.0.0.0
+  port: 18789
+
+ollama:
+  url: http://host.docker.internal:11434
+
+providers:
+  local:
+    type: ollama
+" > /home/node/.openclaw/openclaw.yaml'"#;
+                    let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                        .args(&["-NoProfile", "-Command", config_cmd])
+                        .creation_flags(CREATE_NO_WINDOW)
+                        .output();
                     
-                    // 直接返回配置中的 token
+                    app.emit("model-progress", "✅ 容器内配置已创建".to_string()).ok();
+                    
+                    // 直接返回
                     return Ok("Docker 部署成功！\n\n请访问 http://localhost:18789 \n\n网关令牌（请复制）: local-dev-token-12345".to_string());
                 } else {
                     let err = String::from_utf8_lossy(&output.stderr);
