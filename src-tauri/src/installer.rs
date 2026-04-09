@@ -1462,18 +1462,38 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         // 步骤5: 启动容器
         app.emit("model-progress", "[5/5] 启动容器...".to_string()).ok();
         
-        // 先停止旧容器
-        Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", "docker rm -f openclaw-local -ErrorAction SilentlyContinue; Write-Host 'cleaned'"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-            .ok();
-        
-        // 启动新容器
-        let run_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-local -p 3000:3000 -v \"$env:USERPROFILE\\.openclaw:/home/user/.openclaw\" --add-host=host.docker.internal:host-gateway ghcr.io/openclaw/openclaw:latest"])
+        // 检查容器是否已存在并启动
+        let check_container = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-NoProfile", "-Command", "docker ps -a --filter name=openclaw-local --format '{{.Names}}'"])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
+        
+        let container_exists = match check_container {
+            Ok(output) => {
+                let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                !result.is_empty()
+            }
+            Err(_) => false,
+        };
+        
+        let run_result = if container_exists {
+            // 容器已存在，先删除再创建
+            app.emit("model-progress", "清理旧容器...".to_string()).ok();
+            let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                .args(&["-NoProfile", "-Command", "docker rm -f openclaw-local"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
+            
+            Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-local -p 3000:3000 -v \"$env:USERPROFILE\\.openclaw:/home/user/.openclaw\" --add-host=host.docker.internal:host-gateway ghcr.io/openclaw/openclaw:latest"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output()
+        } else {
+            Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-local -p 3000:3000 -v \"$env:USERPROFILE\\.openclaw:/home/user/.openclaw\" --add-host=host.docker.internal:host-gateway ghcr.io/openclaw/openclaw:latest"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output()
+        };
         
         match run_result {
             Ok(output) => {
