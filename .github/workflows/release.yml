@@ -45,6 +45,9 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Setup npm registry
+        run: npm config set registry https://registry.npmjs.org/
+
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
