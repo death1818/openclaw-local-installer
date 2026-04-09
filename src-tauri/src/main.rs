@@ -23,6 +23,7 @@ use installer::{
     install_openclaw,
     start_openclaw,
     create_desktop_shortcut,
+    deploy_docker,
 };
 use models::{
     list_models,
@@ -70,6 +71,7 @@ fn main() {
             install_openclaw,
             start_openclaw,
             create_desktop_shortcut,
+            deploy_docker,
             list_models,
             get_model_info,
             delete_model,

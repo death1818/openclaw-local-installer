@@ -1357,3 +1357,98 @@ Categories=Development;
         Ok("桌面快捷方式创建成功！".to_string())
     }
 }
+
+/// Docker 一键部署 OpenClaw
+#[tauri::command]
+pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
+    app.emit("model-progress", "=== Docker 一键部署 ===".to_string()).ok();
+    
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        
+        // 检查 Docker 是否运行
+        app.emit("model-progress", "检查 Docker...".to_string()).ok();
+        let docker_check = Command::new("docker").arg("ps").output();
+        if docker_check.is_err() {
+            return Err("Docker 未安装或未运行，请先安装 Docker Desktop".to_string());
+        }
+        if !docker_check.unwrap().status.success() {
+            return Err("Docker 未运行，请先启动 Docker Desktop".to_string());
+        }
+        
+        app.emit("model-progress", "Docker 已运行".to_string()).ok();
+        
+        // 创建部署目录
+        let work_dir = std::env::var("USERPROFILE")
+            .map(|p| format!("{}\\openclaw-docker", p))
+            .map_err(|_| "无法找到用户主目录".to_string())?;
+        
+        app.emit("model-progress", format!("创建目录: {}", work_dir)).ok();
+        std::fs::create_dir_all(&work_dir).map_err(|e| format!("创建目录失败: {}", e))?;
+        
+        // 克隆仓库
+        app.emit("model-progress", "克隆 OpenClaw 仓库...".to_string()).ok();
+        let git_result = Command::new("git")
+            .args(&["clone", "--recurse-submodules", "https://github.com/flottokarotto/openclaw-ollama-setup.git", &work_dir])
+            .current_dir(std::env::var("USERPROFILE").unwrap_or_default())
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        
+        match git_result {
+            Ok(output) => {
+                if !output.status.success() {
+                    let err = String::from_utf8_lossy(&output.stderr);
+                    app.emit("model-progress", format!("⚠️ git 警告: {}", err)).ok();
+                }
+            }
+            Err(e) => {
+                return Err(format!("git 克隆失败: {}", e));
+            }
+        }
+        
+        app.emit("model-progress", "运行一键部署脚本...".to_string()).ok();
+        
+        // 运行 setup.ps1
+        let setup_script = format!("{}\\setup.ps1", work_dir);
+        let ps_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-ExecutionPolicy", "Bypass", "-File", &setup_script])
+            .current_dir(&work_dir)
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        
+        match ps_result {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                
+                if output.status.success() {
+                    app.emit("model-progress", "✅ Docker 部署成功！".to_string()).ok();
+                    // 保存 Docker 部署状态
+                    local_storage_set(&app, "openclaw_docker_deployed", "true");
+                    return Ok("Docker 部署成功！请访问 http://localhost:3000".to_string());
+                } else {
+                    app.emit("model-progress", format!("❌ 部署失败: {}", stderr)).ok();
+                    return Err(format!("部署失败: {}", stderr));
+                }
+            }
+            Err(e) => {
+                return Err(format!("运行脚本失败: {}", e));
+            }
+        }
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Linux/macOS 使用 docker compose
+        app.emit("model-progress", "Docker 部署暂仅支持 Windows".to_string()).ok();
+        Err("Docker 一键部署仅支持 Windows".to_string())
+    }
+}
+
+// 简单的 localStorage 模拟
+fn local_storage_set(app: &tauri::AppHandle, key: &str, value: &str) {
+    // 这里可以后续实现持久化存储
+    app.emit("local-storage-set", serde_json::json!({ "key": key, "value": value })).ok();
+}
