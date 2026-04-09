@@ -60,7 +60,12 @@ jobs:
 
       # 只构建，不发布
       - name: Build the app
-        run: npm run tauri build ${{ matrix.args }}
+        run: |
+          if [ "${{ matrix.platform }}" = "macos-latest" ]; then
+            npm run tauri build -- --target universal-apple-darwin
+          else
+            npm run tauri build
+          fi
 
       # 上传构建产物到 artifacts
       - name: Upload artifacts
