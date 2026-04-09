@@ -901,7 +901,7 @@ function App() {
             <div className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0">3</div>
             <div>
               <p className="font-medium">开始对话</p>
-              <p className="text-gray-500 dark:text-gray-400">打开 <a href="http://localhost:3000" target="_blank" className="text-blue-500 hover:underline">http://localhost:3000</a> 即可使用</p>
+              <p className="text-gray-500 dark:text-gray-400">打开 <a href="http://localhost:18789" target="_blank" className="text-blue-500 hover:underline">http://localhost:18789</a> 即可使用</p>
             </div>
           </div>
         </div>
@@ -1255,7 +1255,7 @@ function App() {
               setError('')
               if (dockerMode) {
                 // Docker 模式直接打开浏览器
-                window.open('http://localhost:3000', '_blank')
+                window.open('http://localhost:18789', '_blank')
                 setGatewayStatus('running')
               } else {
                 await invoke('start_openclaw')
@@ -1286,7 +1286,7 @@ function App() {
                 setDockerMode(true)
                 localStorage.setItem('openclaw_docker_deployed', 'true')
                 setGatewayStatus('running')
-                alert('Docker 部署成功！请访问 http://localhost:3000')
+                alert('Docker 部署成功！请访问 http://localhost:18789')
               } catch (err) {
                 setGatewayStatus('error')
                 setError(String(err) + '\n\n如 Docker 未安装，请下载：https://shiping.ku1818.com.cn/openclaw/Docker%20Desktop%20Installer.exe')
@@ -1327,7 +1327,7 @@ function App() {
         </div>
         
         <a 
-          href="http://localhost:3000" 
+          href="http://localhost:18789" 
           target="_blank" 
           className="text-blue-500 hover:underline text-sm"
         >
@@ -1364,7 +1364,7 @@ function App() {
       <div className="flex-1 bg-white dark:bg-gray-900">
         {gatewayStatus === 'running' ? (
           <iframe 
-            src="http://localhost:3000"
+            src="http://localhost:18789"
             className="w-full h-full border-0"
             title="OpenClaw Web Interface"
           />

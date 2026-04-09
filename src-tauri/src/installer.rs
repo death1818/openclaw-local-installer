@@ -837,7 +837,7 @@ ollama:
 
 # Gateway 配置
 gateway:
-  port: 3000
+  port: 18789
   host: 0.0.0.0
 "#, model_name);
     
@@ -1078,11 +1078,11 @@ pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
         app.emit("model-progress", "[1/4] 检查运行状态...".to_string()).ok();
         app.emit("startup-progress", 5).ok();
         
-        if check_port_listening(3000).await {
+        if check_port_listening(18789).await {
             app.emit("model-progress", "✅ OpenClaw 已在运行中".to_string()).ok();
             app.emit("startup-progress", 100).ok();
             app.emit("gateway-started", true).ok();
-            return Ok("OpenClaw 已在运行，访问 http://localhost:3000".to_string());
+            return Ok("OpenClaw 已在运行，访问 http://localhost:18789".to_string());
         }
         
         // 步骤2: 检查并启动 Ollama
@@ -1176,20 +1176,20 @@ pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
                 }
                 
                 // 检查端口是否响应
-                if check_port_listening(3000).await {
+                if check_port_listening(18789).await {
                     // 额外验证：尝试获取实际响应
                     if let Ok(client) = reqwest::Client::builder()
                         .timeout(std::time::Duration::from_secs(2))
                         .build()
                     {
-                        if let Ok(resp) = client.get("http://127.0.0.1:3000/api/status").send().await {
+                        if let Ok(resp) = client.get("http://127.0.0.1:18789/api/status").send().await {
                             if resp.status().is_success() || resp.status().as_u16() == 404 {
                                 // 404 也说明服务在运行
                                 let elapsed = start_time.elapsed().as_secs();
                                 app_clone.emit("startup-progress", 100).ok();
                                 app_clone.emit("gateway-started", true).ok();
                                 app_clone.emit("model-progress", format!("✅ OpenClaw 启动成功！(耗时 {}秒)", elapsed)).ok();
-                                app_clone.emit("model-progress", "访问地址: http://localhost:3000".to_string()).ok();
+                                app_clone.emit("model-progress", "访问地址: http://localhost:18789".to_string()).ok();
                                 return;
                             }
                         }
@@ -1222,9 +1222,9 @@ pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
     #[cfg(not(target_os = "windows"))]
     {
         // Linux/macOS - 简化版
-        if check_port_listening(3000).await {
+        if check_port_listening(18789).await {
             app.emit("gateway-started", true).ok();
-            return Ok("OpenClaw 已在运行，访问 http://localhost:3000".to_string());
+            return Ok("OpenClaw 已在运行，访问 http://localhost:18789".to_string());
         }
         
         // 启动 Ollama
@@ -1244,7 +1244,7 @@ pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
                 let progress = ((i as f32 / 300.0) * 80.0) as i32 + 10;
                 app_clone.emit("startup-progress", progress.min(90)).ok();
                 
-                if check_port_listening(3000).await {
+                if check_port_listening(18789).await {
                     app_clone.emit("startup-progress", 100).ok();
                     app_clone.emit("gateway-started", true).ok();
                     return;
@@ -1315,7 +1315,7 @@ Write-Host "快捷方式已创建"
             .map_err(|_| "无法找到桌面目录".to_string())?;
         
         let shortcut = format!("{}/OpenClaw.command", desktop);
-        let content = "#!/bin/bash\n# 尝试多种方式启动 OpenClaw\nif command -v openclaw &> /dev/null; then\n    openclaw gateway start\nelif command -v npx &> /dev/null; then\n    npx openclaw gateway start\nelse\n    echo 'OpenClaw 未找到, 请确保已正确安装'\n    exit 1\nfi\n\necho 'OpenClaw 已启动, 请访问 http://localhost:3000'\nread -p '按 Enter 键关闭...'\n";
+        let content = "#!/bin/bash\n# 尝试多种方式启动 OpenClaw\nif command -v openclaw &> /dev/null; then\n    openclaw gateway start\nelif command -v npx &> /dev/null; then\n    npx openclaw gateway start\nelse\n    echo 'OpenClaw 未找到, 请确保已正确安装'\n    exit 1\nfi\n\necho 'OpenClaw 已启动, 请访问 http://localhost:18789'\nread -p '按 Enter 键关闭...'\n";
         
         std::fs::write(&shortcut, content).map_err(|e| e.to_string())?;
         
@@ -1485,12 +1485,12 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
                 .output();
             
             Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-local -p 3000:3000 -v \"$env:USERPROFILE\\.openclaw:/home/user/.openclaw\" --add-host=host.docker.internal:host-gateway ghcr.io/openclaw/openclaw:latest"])
+                .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-local -p 18789:18789 -v \"$env:USERPROFILE\\.openclaw:/home/user/.openclaw\" --add-host=host.docker.internal:host-gateway ghcr.io/openclaw/openclaw:latest"])
                 .creation_flags(CREATE_NO_WINDOW)
                 .output()
         } else {
             Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-local -p 3000:3000 -v \"$env:USERPROFILE\\.openclaw:/home/user/.openclaw\" --add-host=host.docker.internal:host-gateway ghcr.io/openclaw/openclaw:latest"])
+                .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-local -p 18789:18789 -v \"$env:USERPROFILE\\.openclaw:/home/user/.openclaw\" --add-host=host.docker.internal:host-gateway ghcr.io/openclaw/openclaw:latest"])
                 .creation_flags(CREATE_NO_WINDOW)
                 .output()
         };
@@ -1511,7 +1511,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
                     app.emit("model-progress", "等待服务就绪...".to_string()).ok();
                     std::thread::sleep(std::time::Duration::from_secs(5));
                     
-                    return Ok("Docker 部署成功！请访问 http://localhost:3000".to_string());
+                    return Ok("Docker 部署成功！请访问 http://localhost:18789".to_string());
                 } else {
                     let err = String::from_utf8_lossy(&output.stderr);
                     return Err(format!("容器启动失败: {}", err));
