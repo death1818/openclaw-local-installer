@@ -1,0 +1,77 @@
+// 步骤4: 启动 OpenClaw Gateway
+        app.emit("model-progress", "[4/4] 启动 Gateway...".to_string()).ok();
+        app.emit("startup-progress", 20).ok();
+        
+        // 不创建脚本文件，直接在后台启动
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        
+        let spawn_result = if use_global {
+            app.emit("model-progress", "使用全局 openclaw 启动...".to_string()).ok();
+            // 使用 cmd.exe 静默启动
+            Command::new("C:\\Windows\\System32\\cmd.exe")
+                .args(&["/c", "openclaw gateway start"])
+                .env("OLLAMA_NUM_CTX", "24576")
+                .env("OLLAMA_HOST", "0.0.0.0")
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn()
+        } else {
+            app.emit("model-progress", "使用 npx 启动（淘宝镜像）...".to_string()).ok();
+            // 使用 cmd.exe 启动
+            Command::new("C:\\Windows\\System32\\cmd.exe")
+                .args(&["/c", "set npm_config_registry=https://registry.npmmirror.com && npx openclaw gateway start"])
+                .env("OLLAMA_NUM_CTX", "24576")
+                .env("OLLAMA_HOST", "0.0.0.0")
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn()
+        };
+        
+        match spawn_result {
+            Ok(_child) => {
+                app.emit("model-progress", "✅ 进程已启动，等待服务就绪...".to_string()).ok();
+            }
+            Err(e) => {
+                let err_msg = format!("启动进程失败: {}", e);
+                app.emit("model-progress", format!("❌ {}", err_msg)).ok();
+                return Err(err_msg);
+            }
+        }
+        
+        // 真实检测：轮询检查端口和响应
+        let app_clone = app.clone();
+        tokio::spawn(async move {
+            let start_time = std::time::Instant::now();
+            let max_wait_secs = 300; // 最多等待5分钟
+            
+            for i in 1..=max_wait_secs {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                
+                // 更新进度（从20到90）
+                let progress = 20 + ((i as f32 / max_wait_secs as f32) * 70.0) as i32;
+                if progress < 90 {
+                    app_clone.emit("startup-progress", progress).ok();
+                }
+                
+                // 每隔10秒输出一次等待信息
+                if i % 10 == 0 {
+                    app_clone.emit("model-progress", format!("等待中... ({}秒)", i)).ok();
+                }
+                
+                // 检查端口是否响应
+                if check_port_listening(3000).await {
+                    let elapsed = start_time.elapsed().as_secs();
+                    app_clone.emit("startup-progress", 100).ok();
+                    app_clone.emit("gateway-started", true).ok();
+                    app_clone.emit("model-progress", format!("✅ OpenClaw 启动成功！(耗时 {}秒)", elapsed)).ok();
+                    app_clone.emit("model-progress", "访问地址: http://localhost:3000".to_string()).ok();
+                    return;
+                }
+            }
+            
+            // 超时
+            app_clone.emit("model-progress", "⚠️ 启动超时，Gateway 可能需要更长时间".to_string()).ok();
+            app_clone.emit("startup-progress", 90).ok();
+        });
+        
+        return Ok("OpenClaw 正在启动中...".to_string());
+    }
