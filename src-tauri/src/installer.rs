@@ -22,7 +22,7 @@ fn find_node_exe() -> Option<String> {
     }
     
     // 尝试 where 命令
-    if let Ok(output) = Command::new("where").arg("node").output() {
+    if let Ok(output) = Command::new("C:\\Windows\\System32\\where.exe").arg("node").output() {
         if output.status.success() {
             if let Some(line) = String::from_utf8_lossy(&output.stdout).lines().next() {
                 let trimmed = line.trim();
@@ -129,7 +129,7 @@ async fn install_nodejs_windows(app: &tauri::AppHandle) -> Result<String, String
     for (idx, url) in mirrors.iter().enumerate() {
         app.emit("model-progress", format!("尝试镜像源 {}...", idx + 1)).ok();
         
-        let ps_output = Command::new("powershell")
+        let ps_output = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
             .args(&[
                 "-Command",
                 &format!(
@@ -317,7 +317,7 @@ pub async fn install_ollama(app: tauri::AppHandle) -> Result<(), String> {
         
         let _ = app.emit("install-progress", "正在下载 Ollama...");
         
-        let ps_output = Command::new("powershell")
+        let ps_output = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
             .args(&["-Command", &format!("Invoke-WebRequest -Uri '{}' -OutFile '{}'", download_url, installer_path.display())])
             .output().map_err(|e| e.to_string())?;
         
@@ -535,7 +535,7 @@ fn find_ollama_path(app: &tauri::AppHandle) -> Option<String> {
     }
     
     // 尝试 where 命令
-    if let Ok(output) = Command::new("where").arg("ollama").output() {
+    if let Ok(output) = Command::new("C:\\Windows\\System32\\where.exe").arg("ollama").output() {
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             for line in stdout.lines() {
@@ -684,7 +684,7 @@ pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), String> {
         #[cfg(target_os = "windows")]
         let result = {
             // 使用 PowerShell 执行 npm 安装
-            Command::new("powershell")
+            Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
                 .args(&[
                     "-Command",
                     &format!(
@@ -771,7 +771,7 @@ pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), String> {
         }
         
         // 使用 where 命令查找
-        if let Ok(output) = Command::new("where").arg("openclaw").output() {
+        if let Ok(output) = Command::new("C:\\Windows\\System32\\where.exe").arg("openclaw").output() {
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 if let Some(first) = stdout.lines().next() {
@@ -1086,7 +1086,7 @@ pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
         app.emit("model-progress", "[3/4] 检查 OpenClaw 命令...".to_string()).ok();
         app.emit("startup-progress", 15).ok();
         
-        let openclaw_cmd = Command::new("where").arg("openclaw").output();
+        let openclaw_cmd = Command::new("C:\\Windows\\System32\\where.exe").arg("openclaw").output();
         let use_global = match openclaw_cmd {
             Ok(output) => {
                 if output.status.success() {
@@ -1122,7 +1122,8 @@ pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
                 .spawn()
         } else {
             app.emit("model-progress", "使用 npx 启动（淘宝镜像加速）...".to_string()).ok();
-            Command::new("cmd")
+            // 使用完整路径避免 ENOENT 错误
+            Command::new("C:\\Windows\\System32\\cmd.exe")
                 .args(&["/c", "set npm_config_registry=https://registry.npmmirror.com && npx openclaw gateway start"])
                 .env("OLLAMA_NUM_CTX", "24576")
                 .env("OLLAMA_HOST", "0.0.0.0")
@@ -1256,7 +1257,7 @@ Write-Host "快捷方式已创建"
             std::env::var("USERPROFILE").unwrap_or_default()
         );
         
-        let result = Command::new("powershell")
+        let result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
             .args(&["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &ps_script])
             .output();
         
