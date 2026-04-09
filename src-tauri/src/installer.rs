@@ -1142,19 +1142,18 @@ pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
         
         let spawn_result = if use_global {
             app.emit("model-progress", "使用全局安装的 openclaw 启动...".to_string()).ok();
-            // 使用 PowerShell 启动，避免 cmd.exe 的问题
-            Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                .args(&["-NoProfile", "-Command", "openclaw gateway start"])
+            // 使用 cmd.exe /c start 启动，避免黑框
+            Command::new("C:\\Windows\\System32\\cmd.exe")
+                .args(&["/c", "start \"\" OpenClaw Gateway && openclaw gateway start"])
                 .env("OLLAMA_NUM_CTX", "24576")
                 .env("OLLAMA_HOST", "0.0.0.0")
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn()
         } else {
             app.emit("model-progress", "使用 npx 启动（淘宝镜像加速）...".to_string()).ok();
-            // 使用 PowerShell 启动
-            let npx_cmd = "set npm_config_registry=https://registry.npmmirror.com && npx openclaw gateway start";
-            Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                .args(&["-NoProfile", "-Command", &format!("$env:npm_config_registry='https://registry.npmmirror.com'; npx openclaw gateway start")])
+            // 使用 cmd.exe 启动
+            Command::new("C:\\Windows\\System32\\cmd.exe")
+                .args(&["/c", "set npm_config_registry=https://registry.npmmirror.com && npx openclaw gateway start"])
                 .env("OLLAMA_NUM_CTX", "24576")
                 .env("OLLAMA_HOST", "0.0.0.0")
                 .creation_flags(CREATE_NO_WINDOW)
