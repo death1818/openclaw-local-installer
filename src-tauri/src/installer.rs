@@ -1471,6 +1471,12 @@ providers:
         app.emit("model-progress", &format!("✅ 配置已创建: {:?}", config_path)).ok();
         app.emit("model-progress", "✅ 配置已创建".to_string()).ok();
         
+        // 验证配置文件已创建
+        if !config_path.exists() {
+            return Err(format!("配置文件创建失败: {:?}", config_path));
+        }
+        app.emit("model-progress", &format!("配置文件路径: {:?}", config_path)).ok();
+        
         // 步骤5: 启动容器
         app.emit("model-progress", "[5/5] 启动容器...".to_string()).ok();
         
@@ -1522,6 +1528,22 @@ providers:
                     // 等待服务启动
                     app.emit("model-progress", "等待服务就绪...".to_string()).ok();
                     std::thread::sleep(std::time::Duration::from_secs(5));
+                    
+                    // 验证容器内配置文件是否存在
+                    let check_config = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                        .args(&["-NoProfile", "-Command", "docker exec openclaw-local ls -la /home/node/.openclaw/"])
+                        .creation_flags(CREATE_NO_WINDOW)
+                        .output();
+                    
+                    match check_config {
+                        Ok(output) => {
+                            let stdout = String::from_utf8_lossy(&output.stdout);
+                            app.emit("model-progress", &format!("容器内文件: {}", stdout)).ok();
+                        }
+                        Err(e) => {
+                            app.emit("model-progress", &format!("检查容器配置失败: {}", e)).ok();
+                        }
+                    }
                     
                     // 直接返回配置中的 token
                     return Ok("Docker 部署成功！\n\n请访问 http://localhost:18789 \n\n网关令牌（请复制）: local-dev-token-12345".to_string());
