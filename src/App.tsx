@@ -352,7 +352,10 @@ function App() {
         localStorage.setItem('openclaw_licensed', 'true')
         localStorage.setItem('openclaw_license_code', code)
         setLicenseError('')
-        setStep('detecting')
+        // 授权成功后直接进入 Docker 部署模式
+        setDockerMode(true)
+        localStorage.setItem('openclaw_docker_deployed', 'true')
+        setStep('launcher')
       } else {
         setLicenseError(data.message || '授权码无效或已被使用')
       }
@@ -362,7 +365,7 @@ function App() {
         setIsLicensed(true)
         localStorage.setItem('openclaw_licensed', 'true')
         setLicenseError('')
-        setStep('detecting')
+        setDockerMode(true); localStorage.setItem('openclaw_docker_deployed', 'true'); setStep('launcher')
       } else {
         setLicenseError('网络错误，无法验证授权码')
       }
@@ -378,7 +381,7 @@ function App() {
 
   // 硬件检测
   const detectHardware = async () => {
-    setStep('detecting')
+    setDockerMode(true); localStorage.setItem('openclaw_docker_deployed', 'true'); setStep('launcher')
     try {
       const info = await invoke<HardwareInfo>('detect_hardware')
       setHardware(info)
