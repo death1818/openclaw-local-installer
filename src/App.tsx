@@ -1280,6 +1280,16 @@ function App() {
         >
           技能管理
         </button>
+        <button
+          onClick={() => {
+            // 打开 Docker 方案说明页面
+            window.open('https://github.com/flottokarotto/openclaw-ollama-setup', '_blank')
+          }}
+          className="px-3 py-1.5 text-sm border border-purple-300 dark:border-purple-600 text-purple-600 dark:text-purple-400 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20"
+          title="使用 Docker 方案，更稳定"
+        >
+          Docker 方案
+        </button>
       </div>
       
       {/* 主内容区 */}
@@ -1371,12 +1381,21 @@ function App() {
                 </div>
                 <h2 className="text-xl font-semibold mb-2 text-red-600 dark:text-red-400">启动失败</h2>
                 <p className="text-gray-500 dark:text-gray-400 mb-4">{error || '未知错误'}</p>
-                <button
-                  onClick={() => setGatewayStatus('stopped')}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-                >
-                  重试
-                </button>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setGatewayStatus('stopped')}
+                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                  >
+                    重试
+                  </button>
+                  <button
+                    onClick={() => window.open('https://github.com/flottokarotto/openclaw-ollama-setup', '_blank')}
+                    className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600"
+                  >
+                    使用 Docker 方案（更稳定）
+                  </button>
+                </div>
+                <p className="text-sm text-gray-400 mt-4">Docker 方案更稳定，推荐在 Windows 上使用</p>
               </>
             ) : (
               <>
