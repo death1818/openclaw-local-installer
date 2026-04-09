@@ -612,26 +612,34 @@ pub async fn clean_old_version() -> Result<String, String> {
 /// 检查 OpenClaw 是否已安装
 #[tauri::command]
 pub async fn check_openclaw_installed() -> Result<bool, String> {
-    // 方法1: 检查 openclaw 命令
-    let cmd_result = Command::new("openclaw").arg("--version").output();
+    // 方法1: 使用完整路径检查 openclaw 命令
+    let cmd_result = Command::new("C:\\Windows\\System32\\where.exe").arg("openclaw").output();
     if let Ok(output) = cmd_result {
         if output.status.success() {
-            return Ok(true);
+            // 找到 openclaw，验证版本
+            if let Ok(ver_output) = Command::new("openclaw").arg("--version").output() {
+                if ver_output.status.success() {
+                    return Ok(true);
+                }
+            }
         }
     }
     
     // 方法2: Windows 检查全局安装路径
     #[cfg(target_os = "windows")]
     {
-        let npm_global = format!("{}\\npm\\openclaw.cmd", std::env::var("APPDATA").unwrap_or_default());
-        if std::path::Path::new(&npm_global).exists() {
-            return Ok(true);
-        }
+        // 检查多个可能的路径
+        let paths = vec![
+            format!("{}\\npm\\openclaw.cmd", std::env::var("APPDATA").unwrap_or_default()),
+            format!("{}\\npm\\openclaw", std::env::var("APPDATA").unwrap_or_default()),
+            format!("{}\\AppData\\Roaming\\npm\\openclaw.cmd", std::env::var("USERPROFILE").unwrap_or_default()),
+            format!("{}\\AppData\\Roaming\\npm\\openclaw", std::env::var("USERPROFILE").unwrap_or_default()),
+        ];
         
-        // 检查 node_modules
-        let node_modules = format!("{}\\npm\\node_modules\\openclaw", std::env::var("APPDATA").unwrap_or_default());
-        if std::path::Path::new(&node_modules).exists() {
-            return Ok(true);
+        for path in paths {
+            if std::path::Path::new(&path).exists() {
+                return Ok(true);
+            }
         }
     }
     
@@ -783,11 +791,15 @@ pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), String> {
     }
     
     // 验证 openclaw 命令
-    if let Ok(output) = Command::new("openclaw").arg("--version").output() {
+    if let Ok(output) = Command::new("C:\\Windows\\System32\\where.exe").arg("openclaw").output() {
         if output.status.success() {
-            let version = String::from_utf8_lossy(&output.stdout);
-            app.emit("model-progress", format!("✅ 验证成功: {}", version.trim())).ok();
-            return Ok(());
+            if let Ok(ver_output) = Command::new("openclaw").arg("--version").output() {
+                if ver_output.status.success() {
+                    let version = String::from_utf8_lossy(&ver_output.stdout);
+                    app.emit("model-progress", format!("✅ 验证成功: {}", version.trim())).ok();
+                    return Ok(());
+                }
+            }
         }
     }
     
@@ -1114,8 +1126,9 @@ pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
         
         let spawn_result = if use_global {
             app.emit("model-progress", "使用全局安装的 openclaw 启动...".to_string()).ok();
-            Command::new("openclaw")
-                .args(&["gateway", "start"])
+            // 使用 cmd.exe 运行 openclaw 避免 ENOENT
+            Command::new("C:\\Windows\\System32\\cmd.exe")
+                .args(&["/c", "openclaw gateway start"])
                 .env("OLLAMA_NUM_CTX", "24576")
                 .env("OLLAMA_HOST", "0.0.0.0")
                 .creation_flags(CREATE_NO_WINDOW)
