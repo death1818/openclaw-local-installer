@@ -1379,7 +1379,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
             Ok(output) => {
                 if !output.status.success() {
                     let err = String::from_utf8_lossy(&output.stderr);
-                    return Err(format!("Docker 未运行或未安装：{}", err));
+                    return Err("错误: 检测到 Docker Desktop Linux 版，请在 Windows 上安装 Docker Desktop Windows 版。\n\n请卸载当前版本，然后下载：\nhttps://shiping.ku1818.com.cn/openclaw/Docker%20Desktop%20Installer.exe".to_string());
                 }
                 app.emit("model-progress", "✅ Docker 已安装并运行".to_string()).ok();
             }
