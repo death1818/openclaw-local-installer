@@ -635,19 +635,7 @@ function App() {
         开始安装
       </button>
 
-      <div className="mt-4">
-        <button
-          onClick={() => {
-            // 跳过授权，直接使用 Docker 模式
-            setDockerMode(true)
-            localStorage.setItem('openclaw_docker_deployed', 'true')
-            setStep('launcher')
-          }}
-          className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-        >
-          跳过授权，直接使用 Docker 模式 →
-        </button>
-      </div>
+
 
       {/* 公司署名 */}
       <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
