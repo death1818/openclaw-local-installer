@@ -1177,19 +1177,36 @@ pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
                 
                 // 检查端口是否响应
                 if check_port_listening(3000).await {
-                    let elapsed = start_time.elapsed().as_secs();
-                    app_clone.emit("startup-progress", 100).ok();
-                    app_clone.emit("gateway-started", true).ok();
-                    app_clone.emit("model-progress", format!("✅ OpenClaw 启动成功！(耗时 {}秒)", elapsed)).ok();
-                    app_clone.emit("model-progress", "访问地址: http://localhost:3000".to_string()).ok();
-                    return;
+                    // 额外验证：尝试获取实际响应
+                    if let Ok(client) = reqwest::Client::builder()
+                        .timeout(std::time::Duration::from_secs(2))
+                        .build()
+                    {
+                        if let Ok(resp) = client.get("http://127.0.0.1:3000/api/status").send().await {
+                            if resp.status().is_success() || resp.status().as_u16() == 404 {
+                                // 404 也说明服务在运行
+                                let elapsed = start_time.elapsed().as_secs();
+                                app_clone.emit("startup-progress", 100).ok();
+                                app_clone.emit("gateway-started", true).ok();
+                                app_clone.emit("model-progress", format!("✅ OpenClaw 启动成功！(耗时 {}秒)", elapsed)).ok();
+                                app_clone.emit("model-progress", "访问地址: http://localhost:3000".to_string()).ok();
+                                return;
+                            }
+                        }
+                    } else {
+                        // 端口有响应但无法获取状态，继续等待
+                    }
                 }
                 
                 // 检查进程是否还在运行
-                if !check_process_exists("node.exe") && !check_process_exists("openclaw.exe") {
+                let node_running = check_process_exists("node.exe");
+                let openclaw_running = check_process_exists("openclaw.exe");
+                if !node_running && !openclaw_running {
                     // 给一点时间让进程启动
                     if i > 10 {
-                        app_clone.emit("model-progress", "⚠️ 进程可能已退出，请检查日志".to_string()).ok();
+                        app_clone.emit("model-progress", "⚠️ 进程已退出，尝试重新启动...".to_string()).ok();
+                        // 尝试重新启动
+                        break; // 退出循环，让外层处理
                     }
                 }
             }
