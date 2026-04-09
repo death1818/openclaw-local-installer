@@ -1490,7 +1490,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
                     return Ok("Docker 部署成功！请访问 http://localhost:3000".to_string());
                 } else {
                     let err = String::from_utf8_lossy(&output.stderr);
-                    return Err(format!("容器启动失败: {}", err));
+                    return Err("Docker 镜像拉取失败，可能是网络问题。\n\n请尝试以下解决方案：\n1. 打开 Docker Desktop 设置，配置镜像加速器\n2. 或者手动在终端执行：\n   docker pull ghcr.io/openclaw/openclaw:latest\n\n如果持续失败，可能需要使用代理或 VPN。".to_string());
                 }
             }
             Err(e) => {
