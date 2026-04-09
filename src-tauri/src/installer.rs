@@ -1406,28 +1406,32 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
             }
         }
         
-        // 步骤3: 拉取 OpenClaw 镜像
-        app.emit("model-progress", "[3/5] 拉取 OpenClaw 镜像（可能需要几分钟）...".to_string()).ok();
-        // 使用 ghcr.io 镜像
-        let pull_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", "docker pull ghcr.io/openclaw/openclaw:latest"])
+        // 步骤3: 检查镜像是否存在，如果不存在则拉取
+        app.emit("model-progress", "[3/5] 检查镜像...".to_string()).ok();
+        
+        // 先检查镜像是否已存在
+        let check_image = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-NoProfile", "-Command", "docker images ghcr.io/openclaw/openclaw:latest -q"])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         
-        match pull_result {
+        let image_exists = match check_image {
             Ok(output) => {
-                if !output.status.success() {
-                    let err = String::from_utf8_lossy(&output.stderr);
-                    app.emit("model-progress", format!("⚠️ 拉取失败: {}", err)).ok();
-                    // 尝试使用其他镜像
-                    app.emit("model-progress", "尝试其他镜像源...".to_string()).ok();
-                } else {
-                    app.emit("model-progress", "✅ 镜像拉取成功".to_string()).ok();
-                }
+                let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                !result.is_empty()
             }
-            Err(e) => {
-                app.emit("model-progress", format!("⚠️ 拉取失败: {}", e)).ok();
-            }
+            Err(_) => false,
+        };
+        
+        if image_exists {
+            app.emit("model-progress", "✅ 镜像已存在，跳过拉取".to_string()).ok();
+        } else {
+            app.emit("model-progress", "[3/5] 拉取镜像（可能需要几分钟）...".to_string()).ok();
+            let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                .args(&["-NoProfile", "-Command", "docker pull ghcr.io/openclaw/openclaw:latest"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
+            app.emit("model-progress", "✅ 尝试拉取完成".to_string()).ok();
         }
         
         // 步骤4: 创建配置目录
@@ -1490,7 +1494,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
                     return Ok("Docker 部署成功！请访问 http://localhost:3000".to_string());
                 } else {
                     let err = String::from_utf8_lossy(&output.stderr);
-                    return Err("Docker 镜像拉取失败，可能是网络问题。\n\n请尝试以下解决方案：\n1. 打开 Docker Desktop 设置，配置镜像加速器\n2. 或者手动在终端执行：\n   docker pull ghcr.io/openclaw/openclaw:latest\n\n如果持续失败，可能需要使用代理或 VPN。".to_string());
+                    return Err(format!("容器启动失败: {}", err));
                 }
             }
             Err(e) => {
