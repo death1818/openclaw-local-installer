@@ -1370,15 +1370,23 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         
         // 步骤1: 检查 Docker
         app.emit("model-progress", "[1/4] 检查 Docker...".to_string()).ok();
-        let docker_check = Command::new("docker").arg("version").output();
-        if docker_check.is_err() {
-            return Err("Docker 未安装，请先安装 Docker Desktop: https://www.docker.com/products/docker-desktop".to_string());
+        let docker_check = Command::new("C:\\Windows\\System32\\cmd.exe")
+            .args(&["/c", "docker version"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        
+        match docker_check {
+            Ok(output) => {
+                if !output.status.success() {
+                    let err = String::from_utf8_lossy(&output.stderr);
+                    return Err(format!("Docker 未运行或未安装：{}", err));
+                }
+                app.emit("model-progress", "✅ Docker 已安装并运行".to_string()).ok();
+            }
+            Err(e) => {
+                return Err(format!("Docker 未安装或未运行: {}", e));
+            }
         }
-        let output = docker_check.unwrap();
-        if !output.status.success() {
-            return Err("Docker 未运行，请先启动 Docker Desktop".to_string());
-        }
-        app.emit("model-progress", "✅ Docker 已安装并运行".to_string()).ok();
         
         // 步骤2: 拉取 OpenClaw 镜像
         app.emit("model-progress", "[2/4] 拉取 OpenClaw 镜像...".to_string()).ok();
