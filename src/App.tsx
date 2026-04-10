@@ -80,7 +80,7 @@ interface SkillInstallProgress {
   message: string
 }
 
-type InstallStep = 'welcome' | 'license' | 'detecting' | 'select-model' | 'installing' | 'complete' | 'model-management' | 'skill-management' | 'launcher'
+type InstallStep = 'welcome' | 'license' | 'preparing' | 'detecting' | 'select-model' | 'installing' | 'complete' | 'model-management' | 'skill-management' | 'launcher'
 type Theme = 'light' | 'dark'
 
 // 授权码格式验证
@@ -103,6 +103,7 @@ function App() {
   })
   const [licenseCode, setLicenseCode] = useState('')
   const [licenseError, setLicenseError] = useState('')
+  const [progressMessage, setProgressMessage] = useState('')
   
   // 打开支付页面
   const openPaymentPage = async () => {
@@ -352,10 +353,9 @@ function App() {
         localStorage.setItem('openclaw_licensed', 'true')
         localStorage.setItem('openclaw_license_code', code)
         setLicenseError('')
-        // 授权成功后直接进入 Docker 部署模式
-        setDockerMode(true)
+        // 授权成功后先准备 Ollama 环境
+        setStep('preparing')
         localStorage.setItem('openclaw_docker_deployed', 'true')
-        setStep('launcher')
       } else {
         setLicenseError(data.message || '授权码无效或已被使用')
       }
@@ -371,6 +371,50 @@ function App() {
       }
     }
   }
+
+  // 验证成功后先准备 Ollama 环境
+  useEffect(() => {
+    if (step === 'preparing') {
+      prepareOllamaEnvironment()
+    }
+  }, [step])
+
+  // 准备 Ollama 环境（检测/安装/下载模型）
+  const prepareOllamaEnvironment = async () => {
+    setProgressMessage('🚀 开始准备本地AI环境...')
+    
+    try {
+      // 调用后端命令准备 Ollama
+      const result = await invoke<string>('prepare_ollama_environment')
+      
+      // 完成后进入 launcher
+      setDockerMode(true)
+      setStep('launcher')
+    } catch (err) {
+      // 如果失败，显示错误但仍进入 launcher（让用户手动处理）
+      setProgressMessage(`⚠️ ${err}，请手动处理后继续`)
+      setTimeout(() => {
+        setDockerMode(true)
+        setStep('launcher')
+      }, 3000)
+    }
+  }
+
+  // 监听 Ollama 准备进度
+  useEffect(() => {
+    let unlisten: (() => void) | undefined
+    
+    const setupListener = async () => {
+      unlisten = await listen<string>('model-progress', (event) => {
+        setProgressMessage(event.payload)
+      })
+    }
+    
+    setupListener()
+    return () => {
+      if (unlisten) unlisten()
+    }
+  }, [])
 
   // 验证成功后自动开始硬件检测
   useEffect(() => {
@@ -716,6 +760,21 @@ function App() {
         <p className="text-sm text-gray-500 dark:text-gray-400">
           © 2026 北京缘辉旺网络科技有限公司
         </p>
+      </div>
+    </div>
+  )
+
+  // 渲染环境准备界面（Ollama检测安装）
+  const renderPreparing = () => (
+    <div className="text-center">
+      <div className="w-20 h-20 mx-auto mb-6 relative">
+        <div className="absolute inset-0 border-4 border-green-200 dark:border-green-800 rounded-full"></div>
+        <div className="absolute inset-0 border-4 border-green-500 rounded-full animate-spin border-t-transparent"></div>
+      </div>
+      <h2 className="text-xl font-semibold mb-2">正在准备本地AI环境...</h2>
+      <p className="text-gray-600 dark:text-gray-400 mb-4">自动检测安装 Ollama 和下载模型</p>
+      <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 text-left max-w-md mx-auto text-sm">
+        <p className="text-blue-600 dark:text-blue-400">{progressMessage || '正在检查...'}</p>
       </div>
     </div>
   )
@@ -1530,6 +1589,7 @@ function App() {
 
             {step === 'welcome' && renderWelcome()}
             {step === 'license' && renderLicense()}
+            {step === 'preparing' && renderPreparing()}
             {step === 'detecting' && renderDetecting()}
             {step === 'select-model' && renderSelectModel()}
             {step === 'installing' && renderInstalling()}

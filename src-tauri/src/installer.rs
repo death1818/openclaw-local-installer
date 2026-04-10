@@ -292,6 +292,110 @@ pub async fn get_recommended_models(vram_gb: f64, ram_gb: f64) -> Vec<ModelRecom
     models
 }
 
+// 准备 Ollama 环境（检测/安装/下载模型） - 一键自动化
+#[tauri::command]
+pub async fn prepare_ollama_environment(app: tauri::AppHandle) -> Result<String, String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    
+    app.emit("model-progress", "🚀 开始准备本地AI环境...".to_string()).ok();
+    
+    // 步骤1: 检查 Ollama 是否已安装
+    app.emit("model-progress", "[1/3] 检查 Ollama 安装状态...".to_string()).ok();
+    
+    let ollama_check = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+        .args(&["-NoProfile", "-Command", "where.exe ollama"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+    
+    let ollama_installed = match ollama_check {
+        Ok(output) => {
+            let result = String::from_utf8_lossy(&output.stdout).trim();
+            !result.is_empty() && !result.contains("找不到")
+        }
+        Err(_) => false,
+    };
+    
+    if !ollama_installed {
+        // 需要安装 Ollama
+        app.emit("model-progress", "⚠️ Ollama 未安装，正在下载安装...".to_string()).ok();
+        
+        // 下载 Ollama
+        let download_cmd = "Start-BitsTransfer -Source https://ollama.com/download/OllamaSetup.exe -Destination $env:TEMP\\OllamaSetup.exe";
+        let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-NoProfile", "-Command", download_cmd])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        
+        // 安装 Ollama
+        let install_cmd = "Start-Process -FilePath $env:TEMP\\OllamaSetup.exe -ArgumentList /S -Wait";
+        let install_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-NoProfile", "-Command", install_cmd])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        
+        match install_result {
+            Ok(output) => {
+                if output.status.success() {
+                    app.emit("model-progress", "✅ Ollama 安装成功！".to_string()).ok();
+                    std::thread::sleep(std::time::Duration::from_secs(8));
+                } else {
+                    return Err("❌ Ollama 安装失败！请手动安装：https://ollama.com/download".to_string());
+                }
+            }
+            Err(e) => {
+                return Err(format!("❌ Ollama 安装出错: {}", e));
+            }
+        }
+    } else {
+        app.emit("model-progress", "✅ Ollama 已安装".to_string()).ok();
+    }
+    
+    // 步骤2: 检查 phi3.5 模型
+    app.emit("model-progress", "[2/3] 检查本地模型...".to_string()).ok();
+    
+    let model_check = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+        .args(&["-NoProfile", "-Command", "ollama list"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+    
+    let has_phi35 = match model_check {
+        Ok(output) => String::from_utf8_lossy(&output.stdout).contains("phi3.5"),
+        Err(_) => false,
+    };
+    
+    if !has_phi35 {
+        // 需要下载模型
+        app.emit("model-progress", "⚠️ phi3.5 模型未找到，正在下载（约2GB）...".to_string()).ok();
+        app.emit("model-progress", "💡 此过程可能需要几分钟，请耐心等待...".to_string()).ok();
+        
+        let pull_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-NoProfile", "-Command", "ollama pull phi3.5"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        
+        match pull_result {
+            Ok(output) => {
+                if output.status.success() {
+                    app.emit("model-progress", "✅ phi3.5 模型下载成功！".to_string()).ok();
+                } else {
+                    return Err("❌ 模型下载失败！请手动运行：ollama pull phi3.5".to_string());
+                }
+            }
+            Err(e) => {
+                return Err(format!("❌ 模型下载出错: {}", e));
+            }
+        }
+    } else {
+        app.emit("model-progress", "✅ phi3.5 模型已存在".to_string()).ok();
+    }
+    
+    // 步骤3: 完成
+    app.emit("model-progress", "[3/3] ✅ 本地AI环境准备完成！".to_string()).ok();
+    
+    Ok("✅ Ollama 和 phi3.5 模型准备完成！".to_string())
+}
+
 // 检查 Ollama 是否已安装
 #[tauri::command]
 pub async fn check_ollama_installed() -> Result<bool, String> {
