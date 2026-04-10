@@ -125,6 +125,7 @@ function App() {
   const [hardware, setHardware] = useState<HardwareInfo | null>(null)
   const [models, setModels] = useState<ModelRecommendation[]>([])
   const [ollamaInstalled, setOllamaInstalled] = useState<boolean>(false)
+  const [selectedModel, setSelectedModel] = useState<string>('')
   const [installLog, setInstallLog] = useState<string[]>([])
     const [_openclawInstalled, setOpenclawInstalled] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null)
