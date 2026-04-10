@@ -1369,7 +1369,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         
         // 步骤1: 检查 Docker - 使用 PowerShell
-        app.emit("model-progress", "[1/4] 检查 Docker...".to_string()).ok();
+        app.emit("model-progress", "[1/6] 检查 Docker...".to_string()).ok();
         let docker_check = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
             .args(&["-NoProfile", "-Command", "docker version"])
             .creation_flags(CREATE_NO_WINDOW)
@@ -1389,7 +1389,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         }
         
         // 步骤2: 配置 Docker 镜像加速器（解决国内网络问题）
-        app.emit("model-progress", "[2/5] 配置 Docker 镜像加速器...".to_string()).ok();
+        app.emit("model-progress", "[2/6] 配置 Docker 镜像加速器...".to_string()).ok();
         let config_docker = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
             .args(&["-NoProfile", "-Command", r"New-Item -Path 'C:\ProgramData\docker\daemon.json' -ItemType Directory -Force; @{'registry-mirrors'=@('https://docker.mirrors.ustc.edu.cn','https://hub-mirror.c.163.com','https://mirror.baidubce.com')} | ConvertTo-Json | Set-Content 'C:\ProgramData\docker\daemon.json' -Encoding UTF8; Write-Host 'Docker 镜像加速器配置完成'"])
             .creation_flags(CREATE_NO_WINDOW)
@@ -1407,7 +1407,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         }
         
         // 步骤3: 检查镜像是否存在，如果不存在则拉取
-        app.emit("model-progress", "[3/5] 检查镜像...".to_string()).ok();
+        app.emit("model-progress", "[3/6] 检查镜像...".to_string()).ok();
         
         // 先检查镜像是否已存在
         let check_image = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
@@ -1426,7 +1426,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         if image_exists {
             app.emit("model-progress", "✅ 镜像已存在，跳过拉取".to_string()).ok();
         } else {
-            app.emit("model-progress", "[3/5] 拉取镜像（可能需要几分钟）...".to_string()).ok();
+            app.emit("model-progress", "[3/6] 拉取镜像（可能需要几分钟）...".to_string()).ok();
             let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
                 .args(&["-NoProfile", "-Command", "docker pull ghcr.io/openclaw/openclaw:latest"])
                 .creation_flags(CREATE_NO_WINDOW)
