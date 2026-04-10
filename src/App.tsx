@@ -80,7 +80,7 @@ interface SkillInstallProgress {
   message: string
 }
 
-type InstallStep = 'welcome' | 'license' | 'preparing' | 'detecting' | 'select-model' | 'installing' | 'complete' | 'model-management' | 'skill-management' | 'launcher'
+type InstallStep = 'welcome' | 'license' | 'preparing' | 'detecting' | 'select-model' | 'installing' | 'complete' | 'model-management' | 'skill-management' | 'launcher' | 'ollama-setup'
 type Theme = 'light' | 'dark'
 
 // 授权码格式验证
@@ -124,6 +124,7 @@ function App() {
   
   const [hardware, setHardware] = useState<HardwareInfo | null>(null)
   const [models, setModels] = useState<ModelRecommendation[]>([])
+  const [ollamaInstalled, setOllamaInstalled] = useState<boolean>(false)
   const [selectedModel, setSelectedModel] = useState<string>('')
   const [installLog, setInstallLog] = useState<string[]>([])
   const [_ollamaInstalled, setOllamaInstalled] = useState(false)
@@ -767,18 +768,106 @@ function App() {
     </div>
   )
 
-  // 渲染环境准备界面（Ollama检测安装）
+  // 渲染环境准备界面（Ollama设置教程）
   const renderPreparing = () => (
-    <div className="text-center">
-      <div className="w-20 h-20 mx-auto mb-6 relative">
-        <div className="absolute inset-0 border-4 border-green-200 dark:border-green-800 rounded-full"></div>
-        <div className="absolute inset-0 border-4 border-green-500 rounded-full animate-spin border-t-transparent"></div>
+    <div className="max-w-lg mx-auto">
+      <div className="text-center mb-6">
+        <h2 className="text-2xl font-bold mb-2">🛠️ 本地AI环境设置</h2>
+        <p className="text-gray-600 dark:text-gray-400">
+          使用本地模型需要先安装 Ollama 和下载模型
+        </p>
       </div>
-      <h2 className="text-xl font-semibold mb-2">正在准备本地AI环境...</h2>
-      <p className="text-gray-600 dark:text-gray-400 mb-4">自动检测安装 Ollama 和下载模型</p>
-      <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 text-left max-w-md mx-auto text-sm">
-        <p className="text-blue-600 dark:text-blue-400">{progressMessage || '正在检查...'}</p>
+      
+      {/* 步骤1: 安装Ollama */}
+      <div className="bg-blue-50 dark:bg-blue-900/30 rounded-lg p-4 mb-4">
+        <h3 className="font-semibold mb-2">📦 步骤1: 安装 Ollama</h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+          下载并安装 Ollama（Windows 安装包约 200MB）
+        </p>
+        <a
+          href="https://ollama.com/download"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm"
+        >
+          🔗 下载 Ollama
+        </a>
       </div>
+      
+      {/* 步骤2: 下载模型 */}
+      <div className="bg-green-50 dark:bg-green-900/30 rounded-lg p-4 mb-4">
+        <h3 className="font-semibold mb-2">📥 步骤2: 下载 phi3.5 模型</h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+          安装 Ollama 后，在 PowerShell 中运行以下命令下载模型（约2GB）：
+        </p>
+        <div className="bg-gray-800 text-green-400 rounded p-3 text-sm font-mono mb-3">
+          ollama pull phi3.5
+        </div>
+        <p className="text-xs text-gray-500">
+          💡 此过程可能需要几分钟，请耐心等待下载完成
+        </p>
+      </div>
+      
+      {/* 状态检测 */}
+      <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 mb-6">
+        <h3 className="font-semibold mb-3">🔍 检测状态</h3>
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm">Ollama 已安装:</span>
+          <span className={ollamaInstalled ? "text-green-600 font-medium" : "text-red-500"}>
+            {ollamaInstalled ? '✅ 已安装' : '❌ 未安装'}
+          </span>
+        </div>
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm">phi3.5 模型:</span>
+          <span className={models.some(m => m.name.includes('phi3.5')) ? 'text-green-600 font-medium' : 'text-red-500'}>
+            {models.some(m => m.name.includes('phi3.5')) ? '✅ 已下载' : '❌ 未下载'}
+          </span>
+        </div>
+        <button
+          onClick={async () => {
+            setProgressMessage('🔍 检测中...')
+            try {
+              const ollamaStatus = await invoke<boolean>('check_ollama_installed')
+              setOllamaInstalled(ollamaStatus)
+              
+              // 检测模型
+              const modelList = await invoke<any[]>('get_model_list')
+              setModels(modelList || [])
+              
+              if (ollamaStatus && modelList?.some((m: any) => m.name?.includes('phi3.5'))) {
+                setProgressMessage('✅ 检测通过！即将进入启动器...')
+                setTimeout(() => {
+                  setDockerMode(true)
+                  setStep('launcher')
+                }, 1500)
+              } else {
+                setProgressMessage('⚠️ 请完成上述步骤后再检测')
+              }
+            } catch (e) {
+              setProgressMessage('❌ 检测失败: ' + e)
+            }
+          }}
+          className="w-full px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
+        >
+          🔄 检测
+        </button>
+        {progressMessage && (
+          <p className="mt-3 text-sm text-center text-blue-600 dark:text-blue-400">
+            {progressMessage}
+          </p>
+        )}
+      </div>
+      
+      {/* 跳过按钮 */}
+      <button
+        onClick={() => {
+          setDockerMode(true)
+          setStep('launcher')
+        }}
+        className="w-full text-gray-500 hover:text-gray-700 text-sm"
+      >
+        跳过，直接进入启动器 →
+      </button>
     </div>
   )
 
