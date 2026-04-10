@@ -1434,8 +1434,64 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
             app.emit("model-progress", "✅ 尝试拉取完成".to_string()).ok();
         }
         
-        // 步骤4: 创建配置目录
-        app.emit("model-progress", "[3/4] 创建配置...".to_string()).ok();
+        // 步骤4: 检查并安装 Ollama（宿主机本地模型需要）
+        app.emit("model-progress", "[4/6] 检查 Ollama...".to_string()).ok();
+        
+        let ollama_check = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-NoProfile", "-Command", "ollama --version"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        
+        let ollama_installed = match ollama_check {
+            Ok(output) => output.status.success(),
+            Err(_) => false,
+        };
+        
+        if !ollama_installed {
+            app.emit("model-progress", "⏬ Ollama 未安装，正在下载安装...".to_string()).ok();
+            
+            // 下载 Ollama Windows 版
+            let download_cmd = "Start-BitsTransfer -Source 'https://ollama.com/download/OllamaSetup.exe' -Destination '$env:TEMP\\OllamaSetup.exe'";
+            let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                .args(&["-NoProfile", "-Command", download_cmd])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
+            
+            // 安装 Ollama
+            let install_cmd = "Start-Process -FilePath '$env:TEMP\\OllamaSetup.exe' -ArgumentList '/S' -Wait";
+            let install_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                .args(&["-NoProfile", "-Command", install_cmd])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
+            
+            match install_result {
+                Ok(output) => {
+                    if output.status.success() {
+                        app.emit("model-progress", "✅ Ollama 安装成功".to_string()).ok();
+                        // 等待 Ollama 服务启动
+                        std::thread::sleep(std::time::Duration::from_secs(5));
+                        
+                        // 下载默认模型
+                        app.emit("model-progress", "⏬ 正在下载本地模型 phi3.5...".to_string()).ok();
+                        let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                            .args(&["-NoProfile", "-Command", "ollama pull phi3.5"])
+                            .creation_flags(CREATE_NO_WINDOW)
+                            .output();
+                        app.emit("model-progress", "✅ 模型下载完成".to_string()).ok();
+                    } else {
+                        app.emit("model-progress", "⚠️ Ollama 安装可能失败，请手动安装".to_string()).ok();
+                    }
+                }
+                Err(e) => {
+                    app.emit(&format!("⚠️ Ollama 安装出错: {}", e)).ok();
+                }
+            }
+        } else {
+            app.emit("model-progress", "✅ Ollama 已安装".to_string()).ok();
+        }
+        
+        // 步骤5: 创建配置目录
+        app.emit("model-progress", "[5/6] 创建配置...".to_string()).ok();
         let config_dir = format!("{}\\.openclaw", std::env::var("USERPROFILE").unwrap_or_default());
         std::fs::create_dir_all(&config_dir).ok();
         
@@ -1487,7 +1543,7 @@ providers:
         app.emit("model-progress", &format!("配置文件路径: {:?}", config_path)).ok();
         
         // 步骤5: 启动容器
-        app.emit("model-progress", "[5/5] 启动容器...".to_string()).ok();
+        app.emit("model-progress", "[6/6] 启动容器...".to_string()).ok();
         
         // 检查容器是否已存在并启动
         let check_container = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
