@@ -1601,7 +1601,6 @@ providers:
                         .output();
                     
                     // 使用简单的 echo 方式写入配置
-                    let config_cmd = "echo model: phi3.5 > /tmp/openclaw.yaml && echo gateway: >> /tmp/openclaw.yaml && echo   mode: local >> /tmp/openclaw.yaml && echo   bind: \"0.0.0.0\" >> /tmp/openclaw.yaml && echo   port: 18789 >> /tmp/openclaw.yaml && echo   auth: >> /tmp/openclaw.yaml && echo     required: false >> /tmp/openclaw.yaml && echo ollama: >> /tmp/openclaw.yaml && echo   url: http://host.docker.internal:11434 >> /tmp/openclaw.yaml && echo providers: >> /tmp/openclaw.yaml && echo   local: >> /tmp/openclaw.yaml && echo     type: ollama >> /tmp/openclaw.yaml && docker cp /tmp/openclaw.yaml openclaw-local:/home/node/.openclaw/openclaw.yaml".to_string();
                     let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
                         .args(&["-NoProfile", "-Command", &config_cmd])
                         .creation_flags(CREATE_NO_WINDOW)
