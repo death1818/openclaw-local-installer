@@ -385,7 +385,7 @@ function App() {
     
     try {
       // 调用后端命令准备 Ollama
-      const result = await invoke<string>('prepare_ollama_environment')
+      await invoke<string>('prepare_ollama_environment')
       
       // 完成后进入 launcher
       setDockerMode(true)
