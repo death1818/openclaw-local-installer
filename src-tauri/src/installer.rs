@@ -321,31 +321,28 @@ pub async fn prepare_ollama_environment(app: tauri::AppHandle) -> Result<String,
         // 需要安装 Ollama
         app.emit("model-progress", "⚠️ Ollama 未安装，正在下载安装...".to_string()).ok();
         
-        // 下载 Ollama
-        let download_cmd = "Start-BitsTransfer -Source https://ollama.com/download/OllamaSetup.exe -Destination C:\\Users\\Public\\OllamaSetup.exe";
-        let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", download_cmd])
+        // 下载 Ollama - 使用 Invoke-WebRequest
+        let download_cmd = "Invoke-WebRequest -Uri 'https://ollama.com/download/OllamaSetup.exe' -OutFile 'C:\\Users\\Public\\OllamaSetup.exe'";
+        app.emit("model-progress", "⏬ 正在下载 Ollama...".to_string()).ok();
+        let _ = Command::new("powershell.exe")
+            .args(&["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &download_cmd])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         
+        app.emit("model-progress", "📦 正在安装 Ollama...".to_string()).ok();
         // 安装 Ollama
-        let install_cmd = "Start-Process -FilePath C:\\Users\\Public\\OllamaSetup.exe -ArgumentList /S -Wait";
-        let install_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", install_cmd])
+        let install_result = Command::new("powershell.exe")
+            .args(&["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "& 'C:\\Users\\Public\\OllamaSetup.exe' /S"])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         
         match install_result {
             Ok(output) => {
-                if output.status.success() {
-                    app.emit("model-progress", "✅ Ollama 安装成功！".to_string()).ok();
-                    std::thread::sleep(std::time::Duration::from_secs(8));
-                } else {
-                    return Err("❌ Ollama 安装失败！请手动安装：https://ollama.com/download".to_string());
-                }
+                app.emit("model-progress", "✅ Ollama 安装命令已执行！".to_string()).ok();
+                std::thread::sleep(std::time::Duration::from_secs(10));
             }
             Err(e) => {
-                return Err(format!("❌ Ollama 安装出错: {}", e));
+                app.emit("model-progress", format!("⚠️ 安装出错: {}", e)).ok();
             }
         }
     } else {

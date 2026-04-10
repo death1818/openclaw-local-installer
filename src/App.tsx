@@ -385,7 +385,11 @@ function App() {
     
     try {
       // 调用后端命令准备 Ollama
-      await invoke<string>('prepare_ollama_environment')
+      const result = await invoke<string>('prepare_ollama_environment')
+      setProgressMessage('✅ ' + result)
+      
+      // 等待2秒让用户看到结果
+      await new Promise(resolve => setTimeout(resolve, 2000))
       
       // 完成后进入 launcher
       setDockerMode(true)
@@ -393,10 +397,9 @@ function App() {
     } catch (err) {
       // 如果失败，显示错误但仍进入 launcher（让用户手动处理）
       setProgressMessage(`⚠️ ${err}，请手动处理后继续`)
-      setTimeout(() => {
-        setDockerMode(true)
-        setStep('launcher')
-      }, 3000)
+      await new Promise(resolve => setTimeout(resolve, 3000))
+      setDockerMode(true)
+      setStep('launcher')
     }
   }
 
