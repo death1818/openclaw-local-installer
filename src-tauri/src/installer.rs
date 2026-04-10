@@ -1544,35 +1544,8 @@ providers:
                         .creation_flags(CREATE_NO_WINDOW)
                         .output();
                     
-                    // 写入完整的本地模型配置文件 - 使用heredoc方式
-                    // 先创建配置文件
-                    let config_cmd = r#"docker exec openclaw-local sh -c 'cat > /home/node/.openclaw/openclaw.yaml << "EOF"
-# OpenClaw 本地模型配置
-# 由安装器自动生成 - 纯本地运行，无需API Token
-
-# 默认使用本地模型
-model: phi3.5
-
-# Gateway 配置 - 本地模式无需token
-gateway:
-  mode: local
-  bind: 0.0.0.0
-  port: 18789
-  auth:
-    required: false
-    token: ""
-
-# Ollama 配置 - 连接宿主机
-ollama:
-  url: http://host.docker.internal:11434
-  contextTokens: 24576
-
-# 提供商配置 - 仅本地
-providers:
-  local:
-    type: ollama
-    preferLocal: true
-EOF'";
+                    // 使用 printf 写入配置
+                    let config_cmd = "docker exec openclaw-local sh -c 'printf \\"# OpenClaw 本地模型配置\\nmodel: phi3.5\\ngateway:\\n  mode: local\\n  bind: 0.0.0.0\\n  port: 18789\\n  auth:\\n    required: false\\n\\nollama:\\n  url: http://host.docker.internal:11434\\n  contextTokens: 24576\\n\\nproviders:\\n  local:\\n    type: ollama\\n    preferLocal: true\\n > /home/node/.openclaw/openclaw.yaml'".to_string();
                     let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
                         .args(&["-NoProfile", "-Command", &config_cmd])
                         .creation_flags(CREATE_NO_WINDOW)
