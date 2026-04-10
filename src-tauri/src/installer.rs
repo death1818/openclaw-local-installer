@@ -322,14 +322,14 @@ pub async fn prepare_ollama_environment(app: tauri::AppHandle) -> Result<String,
         app.emit("model-progress", "⚠️ Ollama 未安装，正在下载安装...".to_string()).ok();
         
         // 下载 Ollama
-        let download_cmd = "Start-BitsTransfer -Source https://ollama.com/download/OllamaSetup.exe -Destination $env:TEMP\\OllamaSetup.exe";
+        let download_cmd = "Start-BitsTransfer -Source https://ollama.com/download/OllamaSetup.exe -Destination C:\\Users\\Public\\OllamaSetup.exe";
         let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
             .args(&["-NoProfile", "-Command", download_cmd])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         
         // 安装 Ollama
-        let install_cmd = "Start-Process -FilePath $env:TEMP\\OllamaSetup.exe -ArgumentList /S -Wait";
+        let install_cmd = "Start-Process -FilePath C:\\Users\\Public\\OllamaSetup.exe -ArgumentList /S -Wait";
         let install_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
             .args(&["-NoProfile", "-Command", install_cmd])
             .creation_flags(CREATE_NO_WINDOW)
