@@ -365,7 +365,9 @@ function App() {
         setIsLicensed(true)
         localStorage.setItem('openclaw_licensed', 'true')
         setLicenseError('')
-        setDockerMode(true); localStorage.setItem('openclaw_docker_deployed', 'true'); setStep('launcher')
+        // 授权成功后先进入 Ollama 设置界面
+        setStep('preparing')
+        localStorage.setItem('openclaw_docker_deployed', 'true')
       } else {
         setLicenseError('网络错误，无法验证授权码')
       }
@@ -385,21 +387,11 @@ function App() {
     
     try {
       // 调用后端命令准备 Ollama
-      const result = await invoke<string>('prepare_ollama_environment')
-      setProgressMessage('✅ ' + result)
-      
-      // 等待2秒让用户看到结果
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
-      // 完成后进入 launcher
-      setDockerMode(true)
-      setStep('launcher')
+      // 注意：不再自动跳转，由用户手动点击检测按钮
+      setProgressMessage('✅ 请点击下方检测按钮验证 Ollama 和模型')
     } catch (err) {
-      // 如果失败，显示错误但仍进入 launcher（让用户手动处理）
-      setProgressMessage(`⚠️ ${err}，请手动处理后继续`)
-      await new Promise(resolve => setTimeout(resolve, 3000))
-      setDockerMode(true)
-      setStep('launcher')
+      // 如果失败，停留在界面让用户手动处理
+      setProgressMessage(`⚠️ ${err}，请手动完成 Ollama 安装后点击检测`)
     }
   }
 
