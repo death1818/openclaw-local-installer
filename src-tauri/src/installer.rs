@@ -1600,11 +1600,8 @@ providers:
                         .creation_flags(CREATE_NO_WINDOW)
                         .output();
                     
-                    // 使用简单的 echo 方式写入配置
-                    let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                        .args(&["-NoProfile", "-Command", &config_cmd])
-                        .creation_flags(CREATE_NO_WINDOW)
-                        .output();
+                    // 配置已通过volume挂载自动同步，无需额外操作
+                    app.emit("model-progress", "✅ 配置已同步（volume挂载）".to_string()).ok();
                     
                     app.emit("model-progress", "✅ 本地模型配置已创建 (phi3.5)".to_string()).ok();
                     
