@@ -294,6 +294,7 @@ pub async fn get_recommended_models(vram_gb: f64, ram_gb: f64) -> Vec<ModelRecom
 
 // 准备 Ollama 环境（检测/安装/下载模型） - 一键自动化
 #[tauri::command]
+#[cfg(target_os = "windows")]
 pub async fn prepare_ollama_environment(app: tauri::AppHandle) -> Result<String, String> {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -394,6 +395,13 @@ pub async fn prepare_ollama_environment(app: tauri::AppHandle) -> Result<String,
     app.emit("model-progress", "[3/3] ✅ 本地AI环境准备完成！".to_string()).ok();
     
     Ok("✅ Ollama 和 phi3.5 模型准备完成！".to_string())
+}
+
+// 非 Windows 版本的 stub
+#[tauri::command]
+#[cfg(not(target_os = "windows"))]
+pub async fn prepare_ollama_environment(_app: tauri::AppHandle) -> Result<String, String> {
+    Ok("此功能仅支持 Windows".to_string())
 }
 
 // 检查 Ollama 是否已安装
