@@ -1440,7 +1440,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         
         // 使用更可靠的方式检测 Ollama
         let ollama_check = Command::new("powershell.exe")
-            .args(&["-NoProfile", "-Command", "]
+            .args(&["-NoProfile", "-Command", "
                 try { 
                     $ollama = Get-Command ollama -ErrorAction SilentlyContinue
                     if ($ollama) { 
@@ -1451,7 +1451,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
                     } 
                 } catch { 
                     Write-Output 'ERROR' 
-                }"])
+                }")
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         
@@ -1469,7 +1469,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
             
             // 步骤4.1: 下载 Ollama
             let download_result = Command::new("powershell.exe")
-                .args(&["-NoProfile", "-Command", "]
+                .args(&["-NoProfile", "-Command", "
                     $ProgressPreference = 'SilentlyContinue'
                     $url = 'https://ollama.com/download/OllamaSetup.exe'
                     $dest = "$env:TEMP\\OllamaSetup.exe"
@@ -1483,7 +1483,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
                         }
                     } catch {
                         Write-Output "DOWNLOAD_ERROR:$($_.Exception.Message)"
-                    }"])
+                    }")
                 .creation_flags(CREATE_NO_WINDOW)
                 .output();
             
@@ -1500,7 +1500,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
             
             // 步骤4.2: 安装 Ollama
             let install_result = Command::new("powershell.exe")
-                .args(&["-NoProfile", "-Command", "]
+                .args(&["-NoProfile", "-Command", "
                     $dest = "$env:TEMP\\OllamaSetup.exe"
                     try {
                         Start-Process -FilePath $dest -ArgumentList '/S' -Wait -NoNewWindow
@@ -1514,7 +1514,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
                         }
                     } catch {
                         Write-Output "INSTALL_ERROR:$($_.Exception.Message)"
-                    }"])
+                    }")
                 .creation_flags(CREATE_NO_WINDOW)
                 .output();
             
@@ -1543,7 +1543,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         
         // 先检查模型列表
         let model_check = Command::new("powershell.exe")
-            .args(&["-NoProfile", "-Command", "]
+            .args(&["-NoProfile", "-Command", "
                 try {
                     $models = & ollama list 2>&1 | Out-String
                     if ($models -match 'phi3\.5') { 
@@ -1553,7 +1553,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
                     }
                 } catch {
                     Write-Output 'MODEL_CHECK_ERROR'
-                }"])
+                }")
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         
@@ -1570,7 +1570,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
             
             // 强制下载模型，不允许跳过
             let pull_result = Command::new("powershell.exe")
-                .args(&["-NoProfile", "-Command", "]
+                .args(&["-NoProfile", "-Command", "
                     try {
                         $output = & ollama pull phi3.5 2>&1 | Out-String
                         # 再次检查
@@ -1582,7 +1582,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
                         }
                     } catch {
                         Write-Output "PULL_ERROR:$($_.Exception.Message)"
-                    }"])
+                    }")
                 .creation_flags(CREATE_NO_WINDOW)
                 .output();
             
