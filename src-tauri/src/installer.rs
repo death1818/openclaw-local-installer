@@ -1439,27 +1439,36 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         let config_dir = format!("{}\\.openclaw", std::env::var("USERPROFILE").unwrap_or_default());
         std::fs::create_dir_all(&config_dir).ok();
         
-        // 创建 openclaw.yaml 配置文件
+        // 创建 openclaw.yaml 配置文件 - 纯本地模型模式
         let config_path = std::path::PathBuf::from(&config_dir).join("openclaw.yaml");
         
-        let config_content = r#"# OpenClaw 本地配置
+        let config_content = r#"# OpenClaw 本地模型配置
+# 由安装器自动生成 - 纯本地运行，无需API Token
+
+# 默认使用本地模型
+model: phi3.5
+
+# Gateway 配置 - 本地模式无需token
 gateway:
   mode: local
   bind: "0.0.0.0"
   port: 18789
+  # 本地模式不验证token
   auth:
-    token: "local-dev-token-12345"
+    required: false
+    token: ""
 
-# 本地 Ollama 配置
+# 本地 Ollama 配置 - 连接宿主机
 ollama:
   url: "http://host.docker.internal:11434"
+  contextTokens: 24576
 
-# 模型提供商
+# 模型提供商 - 仅本地
 providers:
   local:
     type: ollama
-    models:
-      - "qwen3:14b"
+    # 强制使用本地模型
+    preferLocal: true
 "#;
         
         // 确保目录存在
@@ -1535,28 +1544,52 @@ providers:
                         .creation_flags(CREATE_NO_WINDOW)
                         .output();
                     
-                    // 使用 printf 写入配置文件（更可靠）
-                    let config_cmd = r#"docker exec openclaw-local sh -c 'printf "gateway:
+                    // 写入完整的本地模型配置文件 - 使用heredoc方式
+                    // 先创建配置文件
+                    let config_cmd = r#"docker exec openclaw-local sh -c 'cat > /home/node/.openclaw/openclaw.yaml << "EOF"
+# OpenClaw 本地模型配置
+# 由安装器自动生成 - 纯本地运行，无需API Token
+
+# 默认使用本地模型
+model: phi3.5
+
+# Gateway 配置 - 本地模式无需token
+gateway:
   mode: local
   bind: 0.0.0.0
   port: 18789
+  auth:
+    required: false
+    token: ""
 
+# Ollama 配置 - 连接宿主机
 ollama:
   url: http://host.docker.internal:11434
+  contextTokens: 24576
 
+# 提供商配置 - 仅本地
 providers:
   local:
     type: ollama
-" > /home/node/.openclaw/openclaw.yaml'"#;
+    preferLocal: true
+EOF'";
                     let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                        .args(&["-NoProfile", "-Command", config_cmd])
+                        .args(&["-NoProfile", "-Command", &config_cmd])
                         .creation_flags(CREATE_NO_WINDOW)
                         .output();
                     
-                    app.emit("model-progress", "✅ 容器内配置已创建".to_string()).ok();
+                    app.emit("model-progress", "✅ 本地模型配置已创建 (phi3.5)".to_string()).ok();
+                    
+                    // 重启容器使配置生效
+                    let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                        .args(&["-NoProfile", "-Command", "docker restart openclaw-local"])
+                        .creation_flags(CREATE_NO_WINDOW)
+                        .output();
+                    
+                    std::thread::sleep(std::time::Duration::from_secs(3));
                     
                     // 直接返回
-                    return Ok("Docker 部署成功！\n\n请访问 http://localhost:18789 \n\n网关令牌（请复制）: local-dev-token-12345".to_string());
+                    return Ok("Docker 部署成功！\n\n请访问 http://localhost:18789 \n\n✅ 已配置纯本地模型 phi3.5\n✅ 无需任何 API Token\n✅ 使用本机硬件算力".to_string());
                 } else {
                     let err = String::from_utf8_lossy(&output.stderr);
                     return Err(format!("容器启动失败: {}", err));
