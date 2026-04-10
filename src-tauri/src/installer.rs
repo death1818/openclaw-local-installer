@@ -1434,173 +1434,61 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
             app.emit("model-progress", "✅ 尝试拉取完成".to_string()).ok();
         }
         
-        // 步骤4: 【强制性】检查并安装 Ollama - 未安装则无法继续
-        app.emit("model-progress", "══════════════════════════".to_string()).ok();
-        app.emit("model-progress", "[4/6] 🔍 检查 Ollama 安装状态".to_string()).ok();
+        // 步骤4: 检查并安装 Ollama（宿主机本地模型需要）
+        app.emit("model-progress", "[4/6] 检查 Ollama...".to_string()).ok();
         
-        // 使用更可靠的方式检测 Ollama
-        let ollama_check = Command::new("powershell.exe")
-            .args(&["-NoProfile", "-Command", "
-                try { 
-                    $ollama = Get-Command ollama -ErrorAction SilentlyContinue
-                    if ($ollama) { 
-                        $version = & ollama --version 2>&1 
-                        Write-Output "INSTALLED:$version" 
-                    } else { 
-                        Write-Output 'NOT_FOUND' 
-                    } 
-                } catch { 
-                    Write-Output 'ERROR' 
-                }")
+        let ollama_check = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-NoProfile", "-Command", "ollama --version"])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         
-        let ollama_status = match ollama_check {
-            Ok(output) => String::from_utf8_lossy(&output.stdout).trim().to_string(),
-            Err(e) => format!("ERROR:{}", e),
+        let ollama_installed = match ollama_check {
+            Ok(output) => output.status.success(),
+            Err(_) => false,
         };
-        
-        let ollama_installed = ollama_status.contains("INSTALLED:");
         
         if !ollama_installed {
-            // ========== Ollama 未安装，必须安装 ==========
-            app.emit("model-progress", "⚠️ Ollama 未安装！".to_string()).ok();
-            app.emit("model-progress", "⏬ 正在自动下载 Ollama...".to_string()).ok();
+            app.emit("model-progress", "⏬ Ollama 未安装，正在下载安装...".to_string()).ok();
             
-            // 步骤4.1: 下载 Ollama
-            let download_result = Command::new("powershell.exe")
-                .args(&["-NoProfile", "-Command", "
-                    $ProgressPreference = 'SilentlyContinue'
-                    $url = 'https://ollama.com/download/OllamaSetup.exe'
-                    $dest = "$env:TEMP\\OllamaSetup.exe"
-                    try {
-                        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-                        Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing
-                        if (Test-Path $dest) { 
-                            Write-Output 'DOWNLOAD_OK' 
-                        } else { 
-                            Write-Output 'DOWNLOAD_FAIL' 
-                        }
-                    } catch {
-                        Write-Output "DOWNLOAD_ERROR:$($_.Exception.Message)"
-                    }")
+            // 下载 Ollama Windows 版
+            let download_cmd = "Start-BitsTransfer -Source 'https://ollama.com/download/OllamaSetup.exe' -Destination '$env:TEMP\\OllamaSetup.exe'";
+            let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                .args(&["-NoProfile", "-Command", download_cmd])
                 .creation_flags(CREATE_NO_WINDOW)
                 .output();
             
-            let download_status = match download_result {
-                Ok(output) => String::from_utf8_lossy(&output.stdout).trim().to_string(),
-                Err(_) => "DOWNLOAD_ERROR".to_string(),
-            };
-            
-            if !download_status.contains("DOWNLOAD_OK") {
-                return Err(format!("❌ Ollama 下载失败！\n\n请手动下载安装：\nhttps://ollama.com/download\n\n安装完成后重新运行本程序".to_string()));
-            }
-            
-            app.emit("model-progress", "✅ Ollama 下载成功，正在安装...".to_string()).ok();
-            
-            // 步骤4.2: 安装 Ollama
-            let install_result = Command::new("powershell.exe")
-                .args(&["-NoProfile", "-Command", "
-                    $dest = "$env:TEMP\\OllamaSetup.exe"
-                    try {
-                        Start-Process -FilePath $dest -ArgumentList '/S' -Wait -NoNewWindow
-                        Start-Sleep -Seconds 3
-                        # 验证安装
-                        $ollama = Get-Command ollama -ErrorAction SilentlyContinue
-                        if ($ollama) { 
-                            Write-Output 'INSTALL_OK' 
-                        } else { 
-                            Write-Output 'INSTALL_FAIL' 
-                        }
-                    } catch {
-                        Write-Output "INSTALL_ERROR:$($_.Exception.Message)"
-                    }")
+            // 安装 Ollama
+            let install_cmd = "Start-Process -FilePath '$env:TEMP\\OllamaSetup.exe' -ArgumentList '/S' -Wait";
+            let install_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                .args(&["-NoProfile", "-Command", install_cmd])
                 .creation_flags(CREATE_NO_WINDOW)
                 .output();
             
-            let install_status = match install_result {
-                Ok(output) => String::from_utf8_lossy(&output.stdout).trim().to_string(),
-                Err(e) => format!("INSTALL_ERROR:{}", e),
-            };
-            
-            if !install_status.contains("INSTALL_OK") {
-                return Err(format!("❌ Ollama 安装失败！\n\n请手动安装：\n1. 下载: https://ollama.com/download\n2. 安装后重新运行本程序".to_string()));
-            }
-            
-            app.emit("model-progress", "✅ Ollama 安装成功！".to_string()).ok();
-            
-            // 等待 Ollama 服务完全启动
-            std::thread::sleep(std::time::Duration::from_secs(8));
-        } else {
-            // Ollama 已安装，提取版本信息
-            let version_info = ollama_status.replace("INSTALLED:", "").trim().to_string();
-            app.emit("model-progress", &format!("✅ Ollama 已安装: {}", version_info)).ok();
-        }
-        
-        // ========== 步骤4.3: 检查并下载 phi3.5 模型 - 强制性 ==========
-        app.emit("model-progress", "══════════════════════════".to_string()).ok();
-        app.emit("model-progress", "[4.5/6] 🔍 检查本地模型...".to_string()).ok();
-        
-        // 先检查模型列表
-        let model_check = Command::new("powershell.exe")
-            .args(&["-NoProfile", "-Command", "
-                try {
-                    $models = & ollama list 2>&1 | Out-String
-                    if ($models -match 'phi3\.5') { 
-                        Write-Output 'MODEL_EXISTS' 
-                    } else { 
-                        Write-Output 'MODEL_NOT_FOUND' 
+            match install_result {
+                Ok(output) => {
+                    if output.status.success() {
+                        app.emit("model-progress", "✅ Ollama 安装成功".to_string()).ok();
+                        // 等待 Ollama 服务启动
+                        std::thread::sleep(std::time::Duration::from_secs(5));
+                        
+                        // 下载默认模型
+                        app.emit("model-progress", "⏬ 正在下载本地模型 phi3.5...".to_string()).ok();
+                        let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                            .args(&["-NoProfile", "-Command", "ollama pull phi3.5"])
+                            .creation_flags(CREATE_NO_WINDOW)
+                            .output();
+                        app.emit("model-progress", "✅ 模型下载完成".to_string()).ok();
+                    } else {
+                        app.emit("model-progress", "⚠️ Ollama 安装可能失败，请手动安装".to_string()).ok();
                     }
-                } catch {
-                    Write-Output 'MODEL_CHECK_ERROR'
-                }")
-            .creation_flags(CREATE_NO_WINDOW)
-            .output();
-        
-        let model_status = match model_check {
-            Ok(output) => String::from_utf8_lossy(&output.stdout).trim().to_string(),
-            Err(_) => "MODEL_CHECK_ERROR".to_string(),
-        };
-        
-        if !model_status.contains("MODEL_EXISTS") {
-            // 模型不存在，必须下载
-            app.emit("model-progress", "⚠️ phi3.5 模型未找到！".to_string()).ok();
-            app.emit("model-progress", "⏬ 正在下载 phi3.5 模型（约2GB）...".to_string()).ok();
-            app.emit("model-progress", "💡 此过程可能需要几分钟，请耐心等待...".to_string()).ok();
-            
-            // 强制下载模型，不允许跳过
-            let pull_result = Command::new("powershell.exe")
-                .args(&["-NoProfile", "-Command", "
-                    try {
-                        $output = & ollama pull phi3.5 2>&1 | Out-String
-                        # 再次检查
-                        $models = & ollama list 2>&1 | Out-String
-                        if ($models -match 'phi3\.5') { 
-                            Write-Output 'PULL_OK' 
-                        } else { 
-                            Write-Output "PULL_FAIL:$output"
-                        }
-                    } catch {
-                        Write-Output "PULL_ERROR:$($_.Exception.Message)"
-                    }")
-                .creation_flags(CREATE_NO_WINDOW)
-                .output();
-            
-            let pull_status = match pull_result {
-                Ok(output) => String::from_utf8_lossy(&output.stdout).trim().to_string(),
-                Err(e) => format!("PULL_ERROR:{}", e),
-            };
-            
-            if !pull_status.contains("PULL_OK") {
-                return Err(format!("❌ 模型下载失败！\n\n请手动运行以下命令后重试：\nollama pull phi3.5\n\n或前往 https://ollama.com/library/phi3.5 查看".to_string()));
+                }
+                Err(e) => {
+                    app.emit("model-progress", format!("⚠️ Ollama 安装出错: {}", e)).ok();
+                }
             }
-            
-            app.emit("model-progress", "✅ phi3.5 模型下载成功！".to_string()).ok();
         } else {
-            app.emit("model-progress", "✅ phi3.5 模型已存在".to_string()).ok();
+            app.emit("model-progress", "✅ Ollama 已安装".to_string()).ok();
         }
-        
-        app.emit("model-progress", "✅ Ollama 和模型准备完成！".to_string()).ok();
         
         // 步骤5: 创建配置目录
         app.emit("model-progress", "[5/6] 创建配置...".to_string()).ok();
