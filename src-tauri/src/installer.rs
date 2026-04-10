@@ -1483,7 +1483,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
                     }
                 }
                 Err(e) => {
-                    app.emit(&format!("⚠️ Ollama 安装出错: {}", e)).ok();
+                    app.emit("model-progress", format!("⚠️ Ollama 安装出错: {}", e)).ok();
                 }
             }
         } else {
