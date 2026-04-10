@@ -311,7 +311,7 @@ pub async fn prepare_ollama_environment(app: tauri::AppHandle) -> Result<String,
     
     let ollama_installed = match ollama_check {
         Ok(output) => {
-            let result = String::from_utf8_lossy(&output.stdout).trim();
+            let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
             !result.is_empty() && !result.contains("找不到")
         }
         Err(_) => false,
