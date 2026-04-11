@@ -97,22 +97,14 @@ jobs:
           merge-multiple: true
       
       - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
-          release_name: 'OpenClaw Local Installer ${{ github.ref_name }}'
+          name: 'OpenClaw Local Installer ${{ github.ref_name }}'
+          body: 'See CHANGELOG.md for details.'
           draft: true
           prerelease: false
-
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
+          files: |
+            artifacts/OpenClaw.Local.Installer_2.2.7_x64-setup.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/*.exe
-          asset_name: OpenClaw.Local.Installer_x64-setup.exe
-          asset_content_type: application/octet-stream
