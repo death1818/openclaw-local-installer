@@ -72,34 +72,39 @@ jobs:
             npm run tauri build
           fi
 
-      # macOS universal binary 输出在不同路径
       - name: Prepare artifacts (macOS)
         if: matrix.platform == 'macos-latest'
+        shell: bash
         run: |
           mkdir -p release-artifacts
-          # 复制 .app 和 .dmg 文件
           if [ -d "src-tauri/target/universal-apple-darwin/release/bundle/macos" ]; then
             cp -r src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app release-artifacts/ 2>/dev/null || true
           fi
           if [ -d "src-tauri/target/universal-apple-darwin/release/bundle/dmg" ]; then
             cp src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg release-artifacts/ 2>/dev/null || true
           fi
-          # 列出文件用于调试
           echo "Artifacts prepared:"
           ls -la release-artifacts/ || echo "No artifacts found"
 
-      - name: Prepare artifacts (non-macOS)
-        if: matrix.platform != 'macos-latest'
+      - name: Prepare artifacts (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: bash
         run: |
           mkdir -p release-artifacts
-          # Windows
           if [ -d "src-tauri/target/release/bundle/msi" ]; then
             cp src-tauri/target/release/bundle/msi/*.msi release-artifacts/ 2>/dev/null || true
           fi
           if [ -d "src-tauri/target/release/bundle/nsis" ]; then
             cp src-tauri/target/release/bundle/nsis/*.exe release-artifacts/ 2>/dev/null || true
           fi
-          # Linux
+          echo "Artifacts prepared:"
+          ls -la release-artifacts/ || echo "No artifacts found"
+
+      - name: Prepare artifacts (Linux)
+        if: matrix.platform == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          mkdir -p release-artifacts
           if [ -d "src-tauri/target/release/bundle/appimage" ]; then
             cp src-tauri/target/release/bundle/appimage/*.AppImage release-artifacts/ 2>/dev/null || true
           fi
