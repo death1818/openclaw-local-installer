@@ -297,15 +297,15 @@ function App() {
     // 只在进入启动器时才处理
     if (step !== 'launcher') return
     
-    // 等待 dockerMode 状态确定后再处理
-    // 如果 localStorage 中有 docker_deployed 标记，则不自动启动
+    // 检查是否有 Docker 部署标记
     const dockerDeployed = localStorage.getItem('openclaw_docker_deployed') === 'true'
     
     if (dockerDeployed) {
-      // Docker 模式：只检测状态，不启动
+      // Docker 模式：检测容器状态
       console.log('Docker 模式，检测容器状态...')
       setGatewayStatus('starting')
       setStartupProgress(5)
+      setDockerMode(true)
       
       const checkStatus = async () => {
         try {
@@ -323,39 +323,62 @@ function App() {
           if (status.gateway_ready) {
             setGatewayStatus('running')
             setStartupProgress(100)
-            return true
+            return 'ready'
           } else if (!status.container_running) {
-            // 容器未运行，提示用户部署
+            // 容器未运行，清除部署标记，提示用户重新部署
+            console.log('容器未运行，清除部署标记')
+            localStorage.removeItem('openclaw_docker_deployed')
+            setDockerMode(false)
             setGatewayStatus('stopped')
             setStartupProgress(0)
-            return false
+            if (status.error) {
+              setError(status.error)
+            }
+            return 'stopped'
           } else {
             // 容器运行但 Gateway 未就绪
+            console.log('容器运行但 Gateway 未就绪')
+            setGatewayStatus('starting')
             if (status.logs) {
               console.log('容器日志:', status.logs)
             }
-            return false
+            return 'starting'
           }
         } catch (e) {
           console.error('检测 Docker 容器状态失败:', e)
-          return false
+          // 检测失败，清除部署标记
+          localStorage.removeItem('openclaw_docker_deployed')
+          setDockerMode(false)
+          setGatewayStatus('stopped')
+          setError('检测容器状态失败: ' + String(e))
+          return 'error'
         }
       }
       
       // 立即检测一次
       checkStatus()
+      
+      // 轮询检测（最多等待30秒）
+      let checkCount = 0
+      const checkInterval = setInterval(async () => {
+        checkCount++
+        const result = await checkStatus()
+        if (result === 'ready' || result === 'stopped' || result === 'error' || checkCount >= 15) {
+          clearInterval(checkInterval)
+          if (checkCount >= 15 && result === 'starting') {
+            // 超时，Gateway 未就绪
+            setGatewayStatus('error')
+            setError('Gateway 启动超时，请检查容器日志')
+          }
+        }
+      }, 2000)
     } else {
-      // 非 Docker 模式：启动本地 openclaw
-      console.log('非 Docker 模式，启动 Gateway...')
-      setGatewayStatus('starting')
-      setStartupProgress(5)
-      invoke('start_openclaw').catch(err => {
-        console.error('自动启动 Gateway 失败:', err)
-        setGatewayStatus('error')
-        setError(String(err))
-      })
+      // 非 Docker 模式：默认显示已停止状态
+      console.log('非 Docker 模式，等待用户操作...')
+      setGatewayStatus('stopped')
+      setStartupProgress(0)
     }
-  }, [step, dockerMode])
+  }, [step]) // 只依赖 step，不依赖 dockerMode（避免循环）)
 
   // 监听 launch-mode 事件（从命令行参数 --launch 触发）
   useEffect(() => {
@@ -1495,9 +1518,22 @@ function App() {
               setGatewayStatus('starting')
               setError('')
               if (dockerMode) {
-                // Docker 模式直接打开浏览器，使用动态token URL
-                window.open(dockerTokenUrl || 'http://localhost:18789', '_blank')
-                setGatewayStatus('running')
+                // Docker 模式：先检测 Gateway 是否真的运行，再打开浏览器
+                try {
+                  const ready = await invoke<boolean>('check_gateway_status')
+                  if (ready) {
+                    // Gateway 已运行，打开浏览器
+                    window.open(dockerTokenUrl || 'http://localhost:18789', '_blank')
+                    setGatewayStatus('running')
+                  } else {
+                    // Gateway 未运行，提示用户先部署
+                    setGatewayStatus('stopped')
+                    setError('Gateway 未运行，请先点击「Docker 一键部署」按钮')
+                  }
+                } catch (e) {
+                  setGatewayStatus('stopped')
+                  setError('检测 Gateway 状态失败: ' + String(e))
+                }
               } else {
                 await invoke('start_openclaw')
               }
@@ -1506,14 +1542,14 @@ function App() {
               setError(String(err))
             }
           }}
-          disabled={gatewayStatus === 'starting' || gatewayStatus === 'running'}
+          disabled={gatewayStatus === 'starting'}
           className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 flex items-center gap-2"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          {gatewayStatus === 'starting' ? '启动中...' : gatewayStatus === 'running' ? '已启动' : dockerMode ? '打开 Web 界面' : '启动 Gateway'}
+          {gatewayStatus === 'starting' ? '检测中...' : dockerMode ? '打开 Web 界面' : '启动 Gateway'}
         </button>
         
         {/* Docker 部署按钮 */}
