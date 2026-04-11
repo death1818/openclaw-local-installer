@@ -1545,10 +1545,11 @@ function App() {
       {/* 主内容区 */}
       <div className="flex-1 bg-white dark:bg-gray-900">
         {gatewayStatus === 'running' ? (
+          // Docker 部署成功后，显示内置聊天界面
           <iframe 
-            src="http://localhost:18789"
+            src="/chat/index.html"
             className="w-full h-full border-0"
-            title="OpenClaw Web Interface"
+            title="OpenClaw Local Chat"
           />
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-center p-8">
