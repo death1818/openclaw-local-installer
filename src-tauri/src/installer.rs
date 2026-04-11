@@ -1091,7 +1091,7 @@ model: {}
 
 # Ollama 配置 - Docker模式下连接宿主机
 ollama:
-  baseUrl: http://host.docker.internal:11434
+  url: http://host.docker.internal:11434
   contextTokens: 24576
 
 # Gateway 配置
