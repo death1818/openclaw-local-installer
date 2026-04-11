@@ -1969,17 +1969,44 @@ providers:
                     }
                     
                     if !gateway_ready {
-                        // 获取容器日志帮助诊断
-                        let log_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                            .args(&["-NoProfile", "-Command", "docker logs openclaw-yuanhuiwang --tail 50"])
+                        // 先检查容器状态
+                        app.emit("model-progress", "容器状态检查...".to_string()).ok();
+                        
+                        let status_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                            .args(&["-NoProfile", "-Command", "docker ps -a --filter name=openclaw-yuanhuiwang --format '{{.Status}}'"])
                             .creation_flags(CREATE_NO_WINDOW)
                             .output();
                         
-                        if let Ok(output) = log_result {
-                            let logs = String::from_utf8_lossy(&output.stdout);
-                            app.emit("model-progress", format!("❌ Gateway 服务启动失败\n\n容器日志:\n{}", logs)).ok();
-                            return Err("Gateway 服务启动失败，请查看日志".to_string());
-                        }
+                        let container_status = match status_result {
+                            Ok(output) => String::from_utf8_lossy(&output.stdout).trim().to_string(),
+                            Err(e) => format!("无法获取状态: {}", e),
+                        };
+                        
+                        app.emit("model-progress", format!("容器状态: {}", container_status)).ok();
+                        
+                        // 获取容器日志（stdout + stderr）
+                        let log_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                            .args(&["-NoProfile", "-Command", "docker logs openclaw-yuanhuiwang 2>&1 --tail 100"])
+                            .creation_flags(CREATE_NO_WINDOW)
+                            .output();
+                        
+                        let logs = match log_result {
+                            Ok(output) => {
+                                let stdout_log = String::from_utf8_lossy(&output.stdout).to_string();
+                                let stderr_log = String::from_utf8_lossy(&output.stderr).to_string();
+                                if !stdout_log.is_empty() {
+                                    stdout_log
+                                } else if !stderr_log.is_empty() {
+                                    stderr_log
+                                } else {
+                                    "(无日志输出)".to_string()
+                                }
+                            }
+                            Err(e) => format!("获取日志失败: {}", e),
+                        };
+                        
+                        app.emit("model-progress", format!("❌ Gateway 服务启动失败\n\n容器状态: {}\n容器日志:\n{}", container_status, logs)).ok();
+                        return Err(format!("Gateway 服务启动失败\n容器状态: {}\n日志: {}", container_status, logs.lines().take(20).collect::<Vec<_>>().join("\n")));
                     }
                     
                     // 直接返回
@@ -2032,16 +2059,18 @@ pub async fn check_docker_container_status() -> Result<DockerContainerStatus, St
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x08000000;
     
-    // 1. 检查容器是否运行
+    // 1. 检查容器是否运行（使用 docker ps -a 检查包括停止的容器）
     let container_check = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-        .args(&["-NoProfile", "-Command", "docker ps --filter name=openclaw-yuanhuiwang --format '{{.Status}}'"])
+        .args(&["-NoProfile", "-Command", "docker ps -a --filter name=openclaw-yuanhuiwang --format '{{.Status}}'"])
         .creation_flags(CREATE_NO_WINDOW)
         .output();
     
-    let container_running = match container_check {
+    let (container_running, container_status) = match container_check {
         Ok(output) => {
             let status = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            !status.is_empty()
+            // 检查状态是否包含 "Up" 表示正在运行
+            let running = status.starts_with("Up");
+            (running, status)
         }
         Err(e) => {
             return Ok(DockerContainerStatus {
@@ -2055,12 +2084,26 @@ pub async fn check_docker_container_status() -> Result<DockerContainerStatus, St
     };
     
     if !container_running {
+        // 容器未运行，尝试获取退出前的日志
+        let log_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-NoProfile", "-Command", "docker logs openclaw-yuanhuiwang 2>&1 --tail 50"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        
+        let logs = match log_result {
+            Ok(output) => {
+                let log = String::from_utf8_lossy(&output.stdout).to_string();
+                if log.is_empty() { None } else { Some(log) }
+            },
+            Err(_) => None,
+        };
+        
         return Ok(DockerContainerStatus {
             container_running: false,
             gateway_ready: false,
             ollama_connected: false,
-            logs: None,
-            error: Some("容器未运行，请点击 Docker 一键部署".to_string()),
+            logs,
+            error: Some(format!("容器未运行，状态: {}", container_status)),
         });
     }
     
@@ -2070,15 +2113,18 @@ pub async fn check_docker_container_status() -> Result<DockerContainerStatus, St
     // 3. 检查 Ollama 连接
     let ollama_connected = check_ollama_service().await;
     
-    // 4. 如果 Gateway 没就绪，获取容器日志
+    // 4. 如果 Gateway 没就绪，获取容器日志（包括 stderr）
     let logs = if !gateway_ready {
         let log_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", "docker logs openclaw-yuanhuiwang --tail 30"])
+            .args(&["-NoProfile", "-Command", "docker logs openclaw-yuanhuiwang 2>&1 --tail 50"])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         
         match log_result {
-            Ok(output) => Some(String::from_utf8_lossy(&output.stdout).to_string()),
+            Ok(output) => {
+                let log = String::from_utf8_lossy(&output.stdout).to_string();
+                if log.is_empty() { None } else { Some(log) }
+            },
             Err(_) => None,
         }
     } else {
