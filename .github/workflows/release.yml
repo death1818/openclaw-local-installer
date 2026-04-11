@@ -105,11 +105,12 @@ jobs:
           draft: true
           prerelease: false
           files: |
-            artifacts/**/*.exe
-            artifacts/**/*.msi
-            artifacts/**/*.dmg
-            artifacts/**/*.AppImage
-            artifacts/**/*.deb
-            artifacts/**/*.rpm
+            artifacts/*/OpenClaw*.exe
+            artifacts/*/OpenClaw*.msi
+            artifacts/*/OpenClaw*.dmg
+            artifacts/*/OpenClaw*.AppImage
+            artifacts/*/OpenClaw*.appimage
+            artifacts/*/OpenClaw*.deb
+            artifacts/*/OpenClaw*.rpm
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
