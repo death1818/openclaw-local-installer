@@ -1089,9 +1089,9 @@ pub async fn configure_openclaw(model_name: String, app: tauri::AppHandle) -> Re
 # 默认模型配置
 model: {}
 
-# Ollama 配置
+# Ollama 配置 - Docker模式下连接宿主机
 ollama:
-  baseUrl: http://127.0.0.1:11434
+  baseUrl: http://host.docker.internal:11434
   contextTokens: 24576
 
 # Gateway 配置
