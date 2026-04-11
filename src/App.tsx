@@ -1827,7 +1827,7 @@ function App() {
           
           {/* 刷新连接 */}
           <button
-            onClick={checkChatConnection}
+            onClick={() => checkChatConnection()}
             className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
             title="刷新连接"
           >
