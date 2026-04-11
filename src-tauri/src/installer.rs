@@ -1955,7 +1955,7 @@ pub async fn check_gateway_status() -> Result<bool, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
         .build()
-        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
     
     match client.get("http://localhost:18789/api/health").send().await {
         Ok(res) if res.status().is_success() => Ok(true),
@@ -1969,14 +1969,14 @@ pub async fn get_gateway_models() -> Result<Vec<GatewayModel>, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
-        .map_err(|e| e.to_string())?
-    
+        .map_err(|e| e.to_string())?;
+
     let response = client
         .get("http://localhost:18789/api/models")
         .send()
         .await
-        .map_err(|e| e.to_string())?
-    
+        .map_err(|e| e.to_string())?;
+
     response.json().await.map_err(|e| e.to_string())
 }
 
@@ -1989,31 +1989,31 @@ pub async fn send_chat_message(
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
         .build()
-        .map_err(|e| e.to_string())?
-    
+        .map_err(|e| e.to_string())?;
+
     let request = serde_json::json!({
         "messages": messages,
         "model": model,
         "provider": "local",
         "stream": false
     });
-    
+
     let response = client
         .post("http://localhost:18789/api/chat")
         .json(&request)
         .send()
         .await
-        .map_err(|e| e.to_string())?
-    
+        .map_err(|e| e.to_string())?;
+
     if !response.status().is_success() {
-        return Err(format!("Gateway 错误: {}", response.status()))
+        return Err(format!("Gateway 错误: {}", response.status()));
     }
-    
+
     let result: serde_json::Value = response
         .json()
         .await
-        .map_err(|e| e.to_string())?
-    
+        .map_err(|e| e.to_string())?;
+
     // 提取响应内容
     let content = result
         .get("content")
@@ -2022,7 +2022,7 @@ pub async fn send_chat_message(
         .or_else(|| result.get("response")?.as_str())
         .unwrap_or(&result.to_string())
         .to_string();
-    
+
     Ok(content)
 }
 
