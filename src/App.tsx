@@ -1474,7 +1474,8 @@ function App() {
               setDockerMode(true)
               localStorage.setItem('openclaw_docker_deployed', 'true')
               setGatewayStatus('running')
-              // 不再显示alert，使用动态token URL
+              // Docker 部署成功后直接进入聊天界面
+              setTimeout(() => setStep('chat'), 500)
               console.log('Docker部署结果:', result)
             } catch (err) {
               setGatewayStatus('error')
