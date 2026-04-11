@@ -294,75 +294,66 @@ function App() {
 
   // 如果已安装完成，自动启动 Gateway
   useEffect(() => {
-    if (step === 'launcher') {
+    // 只在进入启动器时才处理
+    if (step !== 'launcher') return
+    
+    // 等待 dockerMode 状态确定后再处理
+    // 如果 localStorage 中有 docker_deployed 标记，则不自动启动
+    const dockerDeployed = localStorage.getItem('openclaw_docker_deployed') === 'true'
+    
+    if (dockerDeployed) {
+      // Docker 模式：只检测状态，不启动
+      console.log('Docker 模式，检测容器状态...')
       setGatewayStatus('starting')
       setStartupProgress(5)
       
-      // Docker 模式：检测容器状态和 Gateway 服务
-      if (dockerMode) {
-        console.log('Docker 模式，检测容器和 Gateway 服务状态...')
-        
-        const checkStatus = async () => {
-          try {
-            interface DockerStatus {
-              container_running: boolean
-              gateway_ready: boolean
-              ollama_connected: boolean
-              logs: string | null
-              error: string | null
+      const checkStatus = async () => {
+        try {
+          interface DockerStatus {
+            container_running: boolean
+            gateway_ready: boolean
+            ollama_connected: boolean
+            logs: string | null
+            error: string | null
+          }
+          
+          const status = await invoke<DockerStatus>('check_docker_container_status')
+          console.log('Docker 容器状态:', status)
+          
+          if (status.gateway_ready) {
+            setGatewayStatus('running')
+            setStartupProgress(100)
+            return true
+          } else if (!status.container_running) {
+            // 容器未运行，提示用户部署
+            setGatewayStatus('stopped')
+            setStartupProgress(0)
+            return false
+          } else {
+            // 容器运行但 Gateway 未就绪
+            if (status.logs) {
+              console.log('容器日志:', status.logs)
             }
-            
-            const status = await invoke<DockerStatus>('check_docker_container_status')
-            console.log('Docker 容器状态:', status)
-            
-            if (status.gateway_ready) {
-              setGatewayStatus('running')
-              setStartupProgress(100)
-              console.log('✅ Gateway 服务已就绪')
-              return true
-            } else if (status.container_running) {
-              // 容器运行但 Gateway 没就绪，显示日志
-              if (status.logs) {
-                console.log('容器日志:', status.logs)
-                setError(`Gateway 服务未就绪，容器日志:\n${status.logs}`)
-              }
-              return false
-            } else {
-              // 容器没运行，提示用户重新部署
-              setError(status.error || '容器未运行，请点击 Docker 一键部署')
-              return false
-            }
-          } catch (e) {
-            console.error('检测 Docker 容器状态失败:', e)
             return false
           }
+        } catch (e) {
+          console.error('检测 Docker 容器状态失败:', e)
+          return false
         }
-        
-        // 立即检测一次
-        checkStatus()
-        
-        // 轮询检测
-        let checkCount = 0
-        const checkInterval = setInterval(async () => {
-          checkCount++
-          setStartupProgress(Math.min(90, 5 + checkCount * 3))
-          
-          const ready = await checkStatus()
-          if (ready || checkCount >= 30) {
-            clearInterval(checkInterval)
-            if (!ready) {
-              setGatewayStatus('error')
-            }
-          }
-        }, 2000)
-      } else {
-        // 非 Docker 模式：启动本地 openclaw
-        invoke('start_openclaw').catch(err => {
-          console.error('自动启动 Gateway 失败:', err)
-          setGatewayStatus('error')
-          setError(String(err))
-        })
       }
+      
+      // 立即检测一次
+      checkStatus()
+    } else {
+      // 非 Docker 模式：启动本地 openclaw
+      console.log('非 Docker 模式，启动 Gateway...')
+      setGatewayStatus('starting')
+      setStartupProgress(5)
+      invoke('start_openclaw').catch(err => {
+        console.error('自动启动 Gateway 失败:', err)
+        setGatewayStatus('error')
+        setError(String(err))
+      })
     }
   }, [step, dockerMode])
 

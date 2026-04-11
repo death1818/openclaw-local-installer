@@ -1704,11 +1704,44 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
             app.emit("model-progress", "✅ 镜像已存在，跳过拉取".to_string()).ok();
         } else {
             app.emit("model-progress", "[3/6] 拉取镜像（可能需要几分钟）...".to_string()).ok();
-            let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                .args(&["-NoProfile", "-Command", "docker pull ghcr.io/openclaw/openclaw:latest"])
+            
+            let pull_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                .args(&["-NoProfile", "-Command", "docker pull ghcr.io/openclaw/openclaw:latest 2>&1"])
                 .creation_flags(CREATE_NO_WINDOW)
                 .output();
-            app.emit("model-progress", "✅ 尝试拉取完成".to_string()).ok();
+            
+            // 检查拉取是否成功
+            let pull_success = match pull_result {
+                Ok(output) => {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    if stdout.contains("Error") || stdout.contains("denied") || stdout.contains("unauthorized") {
+                        app.emit("model-progress", format!("⚠️ 镜像拉取失败: {}", stdout.lines().next().unwrap_or("未知错误")).to_string()).ok();
+                        false
+                    } else if !stderr.is_empty() && (stderr.contains("Error") || stderr.contains("denied")) {
+                        app.emit("model-progress", format!("⚠️ 镜像拉取失败: {}", stderr.lines().next().unwrap_or("未知错误")).to_string()).ok();
+                        false
+                    } else {
+                        app.emit("model-progress", "✅ 镜像拉取完成".to_string()).ok();
+                        true
+                    }
+                }
+                Err(e) => {
+                    app.emit("model-progress", format!("⚠️ 镜像拉取出错: {}", e)).ok();
+                    false
+                }
+            };
+            
+            if !pull_success {
+                return Err(
+                    "Docker 镜像拉取失败！\n\
+                    可能原因：\n1. 需要登录 GitHub Container Registry\n2. 镜像不存在或为私有仓库\n\
+                    解决方案：\n\
+                    方案A - 登录 ghcr.io:\n  docker login ghcr.io -u YOUR_GITHUB_USERNAME -p YOUR_GITHUB_TOKEN\n\
+                    方案B - 使用 npm 方式运行：\n  npm install -g openclaw\n  openclaw gateway start\n\
+                    方案C - 本地构建镜像：\n  git clone https://github.com/openclaw/openclaw.git\n  cd openclaw && docker build -t openclaw:local .".to_string()
+                );
+            }
         }
         
         // 步骤4: 检查并安装 Ollama（宿主机本地模型需要）
