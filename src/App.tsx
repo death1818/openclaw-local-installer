@@ -1474,7 +1474,6 @@ function App() {
               setDockerMode(true)
               localStorage.setItem('openclaw_docker_deployed', 'true')
               setGatewayStatus('running')
-              // Docker 部署成功后等待 Gateway 可用再进入聊天界面
               console.log('Docker部署结果:', result)
               // 等待 Gateway 服务可用
               let gatewayReady = false
@@ -1728,13 +1727,19 @@ function App() {
           setChatConnected(true)
           const models = await invoke<Array<{name: string, size?: number}>>('get_gateway_models')
           setChatModels(models)
-        if (models.length > 0 && !chatSelectedModel) {
-          setChatSelectedModel(models[0].name)
+          if (models.length > 0 && !chatSelectedModel) {
+            setChatSelectedModel(models[0].name)
+          }
+          return // 成功则退出
+        }
+      } catch (err) {
+        console.error(\`检查Gateway连接失败 (尝试 \${i+1}/\${retries}):\`, err)
+        if (i < retries - 1) {
+          await new Promise(resolve => setTimeout(resolve, 2000)) // 等待2秒重试
         }
       }
-    } catch (err) {
-      setChatConnected(false)
     }
+    setChatConnected(false)
   }
 
   // 发送聊天消息（通过 Rust 后端）
