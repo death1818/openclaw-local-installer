@@ -1780,10 +1780,6 @@ gateway:
   mode: local
   bind: "0.0.0.0"
   port: 18789
-  # 本地模式不验证token
-  auth:
-    required: false
-    token: ""
 
 # 本地 Ollama 配置 - Docker模式下连接宿主机
 ollama:
