@@ -1474,9 +1474,23 @@ function App() {
               setDockerMode(true)
               localStorage.setItem('openclaw_docker_deployed', 'true')
               setGatewayStatus('running')
-              // Docker 部署成功后直接进入聊天界面
-              setTimeout(() => setStep('chat'), 500)
+              // Docker 部署成功后等待 Gateway 可用再进入聊天界面
               console.log('Docker部署结果:', result)
+              // 等待 Gateway 服务可用
+              let gatewayReady = false
+              for (let i = 0; i < 10; i++) {
+                try {
+                  const ready = await invoke<boolean>('check_gateway_status')
+                  if (ready) {
+                    gatewayReady = true
+                    break
+                  }
+                } catch (e) {}
+                await new Promise(resolve => setTimeout(resolve, 2000))
+              }
+              if (gatewayReady) {
+                setStep('chat')
+              }
             } catch (err) {
               setGatewayStatus('error')
               setError(String(err) + '\n\n如 Docker 未安装，请下载：https://shiping.ku1818.com.cn/openclaw/Docker%20Desktop%20Installer.exe')
@@ -1706,14 +1720,14 @@ function App() {
   )
 
   // 检查 Gateway 连接并获取模型（通过 Rust 后端）
-  const checkChatConnection = async () => {
-    try {
-      const connected = await invoke<boolean>('check_gateway_status')
-      setChatConnected(connected)
-      
-      if (connected) {
-        const models = await invoke<Array<{name: string, size?: number}>>('get_gateway_models')
-        setChatModels(models)
+  const checkChatConnection = async (retries = 3) => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        const connected = await invoke<boolean>('check_gateway_status')
+        if (connected) {
+          setChatConnected(true)
+          const models = await invoke<Array<{name: string, size?: number}>>('get_gateway_models')
+          setChatModels(models)
         if (models.length > 0 && !chatSelectedModel) {
           setChatSelectedModel(models[0].name)
         }
@@ -1840,7 +1854,15 @@ function App() {
             </p>
             {!chatConnected && (
               <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg text-red-600 dark:text-red-400 text-sm">
-                ⚠️ 无法连接到 Gateway，请先启动服务
+                <div className="flex items-center justify-between">
+                  <span>⚠️ 无法连接到 Gateway，请先启动服务</span>
+                  <button
+                    onClick={() => checkChatConnection(5)}
+                    className="px-3 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600"
+                  >
+                    🔄 重试
+                  </button>
+                </div>
               </div>
             )}
           </div>
