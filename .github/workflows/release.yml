@@ -102,7 +102,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: 'OpenClaw Local Installer ${{ github.ref_name }}'
           body: 'See CHANGELOG.md for details.'
-          draft: true
+          draft: false
           prerelease: false
           files: |
             artifacts/*/OpenClaw*.exe
