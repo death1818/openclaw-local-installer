@@ -1733,7 +1733,7 @@ function App() {
           return // 成功则退出
         }
       } catch (err) {
-        console.error(\`检查Gateway连接失败 (尝试 \${i+1}/\${retries}):\`, err)
+        console.error(`检查Gateway连接失败 (尝试 ${i+1}/${retries}):`, err)
         if (i < retries - 1) {
           await new Promise(resolve => setTimeout(resolve, 2000)) // 等待2秒重试
         }
