@@ -105,11 +105,11 @@ jobs:
           draft: true
           prerelease: false
           files: |
-            artifacts/**/*.exe
-            artifacts/**/*.msi
-            artifacts/**/*.dmg
-            artifacts/**/*.deb
-            artifacts/**/*.rpm
-            artifacts/**/*.AppImage
+            artifacts/*.exe
+            artifacts/*.msi
+            artifacts/*.dmg
+            artifacts/*.deb
+            artifacts/*.rpm
+            artifacts/*.AppImage
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
