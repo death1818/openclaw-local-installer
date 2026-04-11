@@ -1451,11 +1451,12 @@ function App() {
             try {
               setGatewayStatus('starting')
               setError('')
-              await invoke<string>('deploy_docker')
+              const result = await invoke<string>('deploy_docker')
               setDockerMode(true)
               localStorage.setItem('openclaw_docker_deployed', 'true')
               setGatewayStatus('running')
-              alert('Docker 部署成功！\n\n请访问 http://localhost:18789 \n\n网关令牌（复制粘贴）：local-dev-token-12345')
+              // 不再显示alert，使用动态token URL
+              console.log('Docker部署结果:', result)
             } catch (err) {
               setGatewayStatus('error')
               setError(String(err) + '\n\n如 Docker 未安装，请下载：https://shiping.ku1818.com.cn/openclaw/Docker%20Desktop%20Installer.exe')
@@ -1494,13 +1495,19 @@ function App() {
           </span>
         </div>
         
-        <a 
-          href={dockerTokenUrl || "http://localhost:18789"} 
-          target="_blank" 
-          className={`text-sm ${dockerTokenUrl ? 'text-green-500 font-medium' : 'text-blue-500'} hover:underline`}
-        >
-          {dockerTokenUrl ? '打开 Gateway (已获取令牌)' : '在浏览器中打开 →'}
-        </a>
+        {dockerTokenUrl ? (
+          <a 
+            href={dockerTokenUrl} 
+            target="_blank" 
+            className="text-sm text-green-500 font-medium hover:underline flex items-center gap-1"
+          >
+            ✅ 打开 Gateway (已获取令牌)
+          </a>
+        ) : (
+          <span className="text-sm text-gray-400 flex items-center gap-1">
+            ⏳ 等待获取令牌...
+          </span>
+        )}
         
         <div className="flex-1" />
         
