@@ -333,6 +333,10 @@ function App() {
         console.log('Gateway 已启动')
         setGatewayStatus('running')
         setStartupProgress(100)
+        // Docker 模式自动进入聊天界面
+        if (dockerMode) {
+          setStep('chat')
+        }
       }
     })
     
@@ -1560,12 +1564,22 @@ function App() {
       {/* 主内容区 */}
       <div className="flex-1 bg-white dark:bg-gray-900">
         {gatewayStatus === 'running' ? (
-          // Docker 部署成功后，显示内置聊天界面
-          <iframe 
-            src="/chat/index.html"
-            className="w-full h-full border-0"
-            title="OpenClaw Local Chat"
-          />
+          // Docker 模式会自动跳转到聊天界面，这里显示过渡状态
+          <div className="h-full flex flex-col items-center justify-center">
+            <div className="w-20 h-20 mb-6 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center">
+              <svg className="w-10 h-10 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-semibold mb-2 text-green-600 dark:text-green-400">Gateway 已启动</h2>
+            <p className="text-gray-500 dark:text-gray-400 mb-6">正在进入聊天界面...</p>
+            <button
+              onClick={() => setStep('chat')}
+              className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+            >
+              💬 进入聊天
+            </button>
+          </div>
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-center p-8">
             {gatewayStatus === 'starting' ? (
