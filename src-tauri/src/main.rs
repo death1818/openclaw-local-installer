@@ -28,6 +28,7 @@ use installer::{
     check_gateway_status,
     get_gateway_models,
     send_chat_message,
+    get_gateway_url,
 };
 use models::{
     list_models,
@@ -94,6 +95,7 @@ fn main() {
             check_gateway_status,
             get_gateway_models,
             send_chat_message,
+            get_gateway_url,
         ])
         .setup(move |app| {
             // 如果是启动模式，延迟发送事件给前端（确保前端已准备好）

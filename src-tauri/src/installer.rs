@@ -1391,6 +1391,10 @@ pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
         app.emit("model-progress", "[4/4] 启动 Gateway...".to_string()).ok();
         app.emit("startup-progress", 20).ok();
         
+        // 获取或生成 Token
+        let gateway_token = get_or_create_gateway_token();
+        app.emit("model-progress", format!("Gateway Token: {}", &gateway_token)).ok();
+        
         // 不创建脚本文件，直接在后台启动
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -1399,18 +1403,20 @@ pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
             app.emit("model-progress", "使用全局安装的 openclaw 启动...".to_string()).ok();
             // 使用 cmd.exe 运行 openclaw 避免 ENOENT
             Command::new("C:\\Windows\\System32\\cmd.exe")
-                .args(&["/c", "openclaw gateway start --auth none"])
+                .args(&["/c", "openclaw gateway start --auth token"])
                 .env("OLLAMA_NUM_CTX", "24576")
                 .env("OLLAMA_HOST", "0.0.0.0")
+                .env("OPENCLAW_GATEWAY_TOKEN", &gateway_token)
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn()
         } else {
             app.emit("model-progress", "使用 npx openclaw gateway run 启动...".to_string()).ok();
             // 使用 openclaw gateway run 替代 gateway start
             Command::new("C:\\Windows\\System32\\cmd.exe")
-                .args(&["/c", "set npm_config_registry=https://registry.npmmirror.com && npx -y openclaw gateway start --auth none"])
+                .args(&["/c", "set npm_config_registry=https://registry.npmmirror.com && npx -y openclaw gateway start --auth token"])
                 .env("OLLAMA_NUM_CTX", "24576")
                 .env("OLLAMA_HOST", "0.0.0.0")
+                .env("OPENCLAW_GATEWAY_TOKEN", &gateway_token)
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn()
         };
@@ -2036,4 +2042,64 @@ pub struct GatewayModel {
 pub struct ChatMsg {
     role: String,
     content: String,
+}
+
+// ============ Token 管理函数 ============
+
+/// 生成随机 Token
+fn generate_token() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("oc_{:x}", timestamp)
+}
+
+/// 读取或创建 Gateway Token
+fn get_or_create_gateway_token() -> String {
+    let home_dir = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_else(|_| "/tmp".to_string());
+    
+    let config_dir = std::path::PathBuf::from(&home_dir).join(".openclaw");
+    let token_file = config_dir.join("gateway.token");
+    
+    // 尝试读取已存在的 token
+    if token_file.exists() {
+        if let Ok(token) = std::fs::read_to_string(&token_file) {
+            let token = token.trim().to_string();
+            if !token.is_empty() {
+                return token;
+            }
+        }
+    }
+    
+    // 生成新 token
+    let new_token = generate_token();
+    
+    // 确保目录存在
+    if !config_dir.exists() {
+        let _ = std::fs::create_dir_all(&config_dir);
+    }
+    
+    // 保存 token
+    let _ = std::fs::write(&token_file, &new_token);
+    
+    new_token
+}
+
+/// 获取 Gateway URL（包含 Token）
+#[tauri::command]
+pub async fn get_gateway_url() -> Result<String, String> {
+    let base_url = "http://localhost:18789";
+    
+    // 检查服务是否运行
+    if !check_port_listening(18789).await {
+        return Err("Gateway 未运行".to_string());
+    }
+    
+    // 读取 Token
+    let token = get_or_create_gateway_token();
+    Ok(format!("{}?token={}", base_url, token))
 }
