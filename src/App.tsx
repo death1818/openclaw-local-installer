@@ -1862,7 +1862,7 @@ function App() {
                 <div className="flex items-center justify-between">
                   <span>⚠️ 无法连接到 Gateway，请先启动服务</span>
                   <button
-                    onClick={() => checkChatConnection(5)}
+                    onClick={() => { checkChatConnection(5) }}
                     className="px-3 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600"
                   >
                     🔄 重试
