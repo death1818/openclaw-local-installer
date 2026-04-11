@@ -74,14 +74,16 @@ jobs:
             npm run tauri build
           fi
 
-      # 上传构建产物到 artifacts
+      # 上传构建产物到 artifacts - 支持 universal binary 路径
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform }}-bundle
           path: |
             src-tauri/target/release/bundle/**/*
+            src-tauri/target/universal-apple-darwin/release/bundle/**/*
           retention-days: 5
+          if-no-files-found: warn
 
   # 只在一个平台上发布 release
   release:
