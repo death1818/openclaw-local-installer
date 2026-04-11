@@ -2015,6 +2015,97 @@ pub async fn check_gateway_status() -> Result<bool, String> {
     }
 }
 
+/// Docker 容器综合状态检测
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DockerContainerStatus {
+    pub container_running: bool,
+    pub gateway_ready: bool,
+    pub ollama_connected: bool,
+    pub logs: Option<String>,
+    pub error: Option<String>,
+}
+
+/// 检查 Docker 容器状态（用于 Docker 模式下的启动检测）
+#[tauri::command]
+#[cfg(target_os = "windows")]
+pub async fn check_docker_container_status() -> Result<DockerContainerStatus, String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    
+    // 1. 检查容器是否运行
+    let container_check = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+        .args(&["-NoProfile", "-Command", "docker ps --filter name=openclaw-yuanhuiwang --format '{{.Status}}'"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+    
+    let container_running = match container_check {
+        Ok(output) => {
+            let status = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            !status.is_empty()
+        }
+        Err(e) => {
+            return Ok(DockerContainerStatus {
+                container_running: false,
+                gateway_ready: false,
+                ollama_connected: false,
+                logs: None,
+                error: Some(format!("Docker 命令执行失败: {}", e)),
+            });
+        }
+    };
+    
+    if !container_running {
+        return Ok(DockerContainerStatus {
+            container_running: false,
+            gateway_ready: false,
+            ollama_connected: false,
+            logs: None,
+            error: Some("容器未运行，请点击 Docker 一键部署".to_string()),
+        });
+    }
+    
+    // 2. 检查 Gateway 服务
+    let gateway_ready = check_port_listening(18789).await;
+    
+    // 3. 检查 Ollama 连接
+    let ollama_connected = check_ollama_service().await;
+    
+    // 4. 如果 Gateway 没就绪，获取容器日志
+    let logs = if !gateway_ready {
+        let log_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-NoProfile", "-Command", "docker logs openclaw-yuanhuiwang --tail 30"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        
+        match log_result {
+            Ok(output) => Some(String::from_utf8_lossy(&output.stdout).to_string()),
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+    
+    Ok(DockerContainerStatus {
+        container_running,
+        gateway_ready,
+        ollama_connected,
+        logs,
+        error: None,
+    })
+}
+
+#[tauri::command]
+#[cfg(not(target_os = "windows"))]
+pub async fn check_docker_container_status() -> Result<DockerContainerStatus, String> {
+    Ok(DockerContainerStatus {
+        container_running: false,
+        gateway_ready: false,
+        ollama_connected: false,
+        logs: None,
+        error: Some("仅支持 Windows".to_string()),
+    })
+}
+
 /// 获取 Gateway 模型列表
 #[tauri::command]
 pub async fn get_gateway_models() -> Result<Vec<GatewayModel>, String> {

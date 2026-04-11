@@ -26,6 +26,7 @@ use installer::{
     create_desktop_shortcut,
     deploy_docker,
     check_gateway_status,
+    check_docker_container_status,
     get_gateway_models,
     send_chat_message,
     get_gateway_url,
@@ -93,6 +94,7 @@ fn main() {
             uninstall_skill,
             // 聊天功能
             check_gateway_status,
+            check_docker_container_status,
             get_gateway_models,
             send_chat_message,
             get_gateway_url,
