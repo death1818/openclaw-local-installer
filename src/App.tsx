@@ -143,6 +143,7 @@ function App() {
   const [installedModels, setInstalledModels] = useState<InstalledModel[]>([])
   const [selectedInstalledModel, setSelectedInstalledModel] = useState<string | null>(null)
   const [modelDetails, setModelDetails] = useState<ModelDetails | null>(null)
+  const [dockerTokenUrl, setDockerTokenUrl] = useState<string>('')
   
   // 技能管理状态
   const [searchQuery, setSearchQuery] = useState('')
@@ -200,6 +201,11 @@ function App() {
         } else if (event.payload.status === 'failed') {
           setInstallingSkill(null)
         }
+      }),
+      // Docker Token URL 事件
+      listen<string>('docker-token-url', (event) => {
+        setDockerTokenUrl(event.payload)
+        console.log('Docker token URL:', event.payload)
       }),
     ]
 
@@ -1418,8 +1424,8 @@ function App() {
               setGatewayStatus('starting')
               setError('')
               if (dockerMode) {
-                // Docker 模式直接打开浏览器
-                window.open('http://localhost:18789', '_blank')
+                // Docker 模式直接打开浏览器，使用动态token URL
+                window.open(dockerTokenUrl || 'http://localhost:18789', '_blank')
                 setGatewayStatus('running')
               } else {
                 await invoke('start_openclaw')
@@ -1489,11 +1495,11 @@ function App() {
         </div>
         
         <a 
-          href="http://localhost:18789" 
+          href={dockerTokenUrl || "http://localhost:18789"} 
           target="_blank" 
-          className="text-blue-500 hover:underline text-sm"
+          className={`text-sm ${dockerTokenUrl ? 'text-green-500 font-medium' : 'text-blue-500'} hover:underline`}
         >
-          在浏览器中打开 →
+          {dockerTokenUrl ? '打开 Gateway (已获取令牌)' : '在浏览器中打开 →'}
         </a>
         
         <div className="flex-1" />

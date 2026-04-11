@@ -1883,8 +1883,44 @@ providers:
                     
                     std::thread::sleep(std::time::Duration::from_secs(3));
                     
+                    // 获取 token URL - 使用 openclaw dashboard 命令
+                    app.emit("model-progress", "获取访问链接...".to_string()).ok();
+                    
+                    // 等待服务完全启动
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                    
+                    // 运行 openclaw dashboard 获取 token URL
+                    let token_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                        .args(&["-NoProfile", "-Command", "docker exec openclaw-yuanhuiwang openclaw dashboard 2>&1 | Select-String -Pattern 'http.*token' | Select-Object -First 1"])
+                        .creation_flags(CREATE_NO_WINDOW)
+                        .output();
+                    
+                    let token_url = match token_result {
+                        Ok(output) => {
+                            let stdout = String::from_utf8_lossy(&output.stdout);
+                            let lines: Vec<&str> = stdout.lines().collect();
+                            // 查找包含 http 和 token 的行
+                            for line in lines {
+                                if line.contains("http") && line.contains("token") {
+                                    // 提取 URL
+                                    let url = line.trim();
+                                    if url.starts_with("http") {
+                                        app.emit("model-progress", format!("✅ 获取到访问链接: {}", url)).ok();
+                                        return url.to_string();
+                                    }
+                                }
+                            }
+                            // 如果没找到，尝试从日志获取
+                            "http://localhost:18789".to_string()
+                        }
+                        Err(_) => "http://localhost:18789".to_string()
+                    };
+                    
+                    // 发送 token URL 给前端
+                    app.emit("docker-token-url", &token_url).ok();
+                    
                     // 直接返回
-                    return Ok("Docker 部署成功！\n\n请访问 http://localhost:18789 \n\n✅ 已配置纯本地模型 phi3.5\n✅ 无需任何 API Token\n✅ 使用本机硬件算力".to_string());
+                    return Ok(format!("Docker 部署成功！\n\n请访问 {} \n\n✅ 已配置纯本地模型 phi3.5\n✅ 使用本机硬件算力", token_url));
                 } else {
                     let err = String::from_utf8_lossy(&output.stderr);
                     return Err(format!("容器启动失败: {}", err));
