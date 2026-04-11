@@ -494,9 +494,9 @@ function App() {
       await invoke('pull_model', { modelName: selectedModel })
       setInstallLog(prev => [...prev, '✅ 模型下载完成'])
       
-      // 步骤3: 配置 OpenClaw
+      // 步骤3: 配置 OpenClaw（根据模式选择 Ollama URL）
       setInstallLog(prev => [...prev, '正在配置 OpenClaw...'])
-      await invoke('configure_openclaw', { modelName: selectedModel })
+      await invoke('configure_openclaw', { modelName: selectedModel, isDocker: dockerMode })
       setInstallLog(prev => [...prev, '✅ OpenClaw 配置完成'])
       
       // 保存安装完成状态

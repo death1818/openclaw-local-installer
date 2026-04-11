@@ -1070,8 +1070,19 @@ pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), String> {
 
 // 配置 OpenClaw - 直接创建 openclaw.yaml 配置文件
 #[tauri::command]
-pub async fn configure_openclaw(model_name: String, app: tauri::AppHandle) -> Result<String, String> {
+pub async fn configure_openclaw(model_name: String, is_docker: bool, app: tauri::AppHandle) -> Result<String, String> {
     app.emit("model-progress", "=== 配置 OpenClaw ===".to_string()).ok();
+    
+    // 根据模式选择 Ollama URL
+    // Docker 模式：连接宿主机（host.docker.internal）
+    // 本地模式：连接本机（127.0.0.1）
+    let ollama_url = if is_docker {
+        app.emit("model-progress", "模式: Docker (连接宿主机 Ollama)".to_string()).ok();
+        "http://host.docker.internal:11434"
+    } else {
+        app.emit("model-progress", "模式: 本地 (连接本地 Ollama)".to_string()).ok();
+        "http://127.0.0.1:11434"
+    };
     
     // OpenClaw 配置在用户主目录下的 .openclaw 文件夹
     let home_dir = std::env::var("USERPROFILE")
@@ -1082,6 +1093,7 @@ pub async fn configure_openclaw(model_name: String, app: tauri::AppHandle) -> Re
         })?;
     
     app.emit("model-progress", format!("主目录: {}", home_dir)).ok();
+    app.emit("model-progress", format!("Ollama URL: {}", ollama_url)).ok();
     
     let yaml_content = format!(r#"# OpenClaw 配置文件
 # 由安装器自动生成
@@ -1089,16 +1101,16 @@ pub async fn configure_openclaw(model_name: String, app: tauri::AppHandle) -> Re
 # 默认模型配置
 model: {}
 
-# Ollama 配置 - Docker模式下连接宿主机
+# Ollama 配置
 ollama:
-  url: http://host.docker.internal:11434
+  url: {}
   contextTokens: 24576
 
 # Gateway 配置
 gateway:
   port: 18789
   host: 0.0.0.0
-"#, model_name);
+"#, model_name, ollama_url);
     
     // 尝试多个配置目录（按优先级）
     let config_paths = vec![
