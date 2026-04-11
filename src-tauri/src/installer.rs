@@ -1399,7 +1399,7 @@ pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
             app.emit("model-progress", "使用全局安装的 openclaw 启动...".to_string()).ok();
             // 使用 cmd.exe 运行 openclaw 避免 ENOENT
             Command::new("C:\\Windows\\System32\\cmd.exe")
-                .args(&["/c", "openclaw gateway start --token local-dev-token-12345"])
+                .args(&["/c", "openclaw gateway start --local"])
                 .env("OLLAMA_NUM_CTX", "24576")
                 .env("OLLAMA_HOST", "0.0.0.0")
                 .creation_flags(CREATE_NO_WINDOW)
@@ -1408,7 +1408,7 @@ pub async fn start_openclaw(app: tauri::AppHandle) -> Result<String, String> {
             app.emit("model-progress", "使用 npx openclaw gateway run 启动...".to_string()).ok();
             // 使用 openclaw gateway run 替代 gateway start
             Command::new("C:\\Windows\\System32\\cmd.exe")
-                .args(&["/c", "set npm_config_registry=https://registry.npmmirror.com && npx -y openclaw gateway run --token local-dev-token-12345"])
+                .args(&["/c", "set npm_config_registry=https://registry.npmmirror.com && npx -y openclaw gateway start --local"])
                 .env("OLLAMA_NUM_CTX", "24576")
                 .env("OLLAMA_HOST", "0.0.0.0")
                 .creation_flags(CREATE_NO_WINDOW)
