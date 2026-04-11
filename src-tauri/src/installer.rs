@@ -1906,11 +1906,11 @@ providers:
                                     let url = line.trim();
                                     if url.starts_with("http") {
                                         app.emit("model-progress", format!("✅ 获取到访问链接: {}", url)).ok();
-                                        return url.to_string();
+                                        return Ok(format!("Docker 部署成功！\\n\\n请访问 {}\\n\\n✅ 已配置纯本地模型 phi3.5\\n✅ 使用本机硬件算力", url));
                                     }
                                 }
                             }
-                            // 如果没找到，尝试从日志获取
+                            // 如果没找到，使用默认 URL
                             "http://localhost:18789".to_string()
                         }
                         Err(_) => "http://localhost:18789".to_string()
