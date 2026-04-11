@@ -105,6 +105,11 @@ jobs:
           draft: true
           prerelease: false
           files: |
-            artifacts/OpenClaw.Local.Installer_2.2.7_x64-setup.exe
+            artifacts/**/*.exe
+            artifacts/**/*.msi
+            artifacts/**/*.dmg
+            artifacts/**/*.AppImage
+            artifacts/**/*.deb
+            artifacts/**/*.rpm
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
