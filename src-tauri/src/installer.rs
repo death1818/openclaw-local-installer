@@ -1900,23 +1900,23 @@ providers:
                             let stdout = String::from_utf8_lossy(&output.stdout);
                             let lines: Vec<&str> = stdout.lines().collect();
                             // 查找包含 http 和 token 的行
+                            let mut found_url = None;
                             for line in lines {
                                 if line.contains("http") && line.contains("token") {
-                                    // 提取 URL
                                     let url = line.trim();
                                     if url.starts_with("http") {
-                                        app.emit("model-progress", format!("✅ 获取到访问链接: {}", url)).ok();
-                                        return Ok(format!("Docker 部署成功！\\n\\n请访问 {}\\n\\n✅ 已配置纯本地模型 phi3.5\\n✅ 使用本机硬件算力", url));
+                                        found_url = Some(url.to_string());
+                                        break;
                                     }
                                 }
                             }
-                            // 如果没找到，使用默认 URL
-                            "http://localhost:18789".to_string()
+                            found_url.unwrap_or_else(|| "http://localhost:18789".to_string())
                         }
                         Err(_) => "http://localhost:18789".to_string()
                     };
                     
                     // 发送 token URL 给前端
+                    app.emit("model-progress", format!("✅ 获取到访问链接: {}", token_url)).ok();
                     app.emit("docker-token-url", &token_url).ok();
                     
                     // 直接返回
