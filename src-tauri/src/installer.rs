@@ -1883,37 +1883,48 @@ providers:
                     
                     std::thread::sleep(std::time::Duration::from_secs(3));
                     
-                    // 获取 token URL - 使用 openclaw dashboard 命令
+                    // 获取 token URL - 多种方式尝试
                     app.emit("model-progress", "获取访问链接...".to_string()).ok();
                     
                     // 等待服务完全启动
-                    std::thread::sleep(std::time::Duration::from_secs(5));
+                    std::thread::sleep(std::time::Duration::from_secs(10));
                     
-                    // 运行 openclaw dashboard 获取 token URL
-                    let token_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                        .args(&["-NoProfile", "-Command", "docker exec openclaw-yuanhuiwang openclaw dashboard 2>&1 | Select-String -Pattern 'http.*token' | Select-Object -First 1"])
+                    let mut token_url = "http://localhost:18789".to_string();
+                    
+                    // 方式1: 尝试从容器日志获取
+                    let log_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                        .args(&["-NoProfile", "-Command", "docker logs openclaw-yuanhuiwang 2>&1 | Select-String -Pattern 'http.*token' | Select-Object -Last 1"])
                         .creation_flags(CREATE_NO_WINDOW)
                         .output();
                     
-                    let token_url = match token_result {
-                        Ok(output) => {
-                            let stdout = String::from_utf8_lossy(&output.stdout);
-                            let lines: Vec<&str> = stdout.lines().collect();
-                            // 查找包含 http 和 token 的行
-                            let mut found_url = None;
-                            for line in lines {
-                                if line.contains("http") && line.contains("token") {
-                                    let url = line.trim();
-                                    if url.starts_with("http") {
-                                        found_url = Some(url.to_string());
-                                        break;
-                                    }
+                    if let Ok(output) = log_result {
+                        let stdout = String::from_utf8_lossy(&output.stdout);
+                        for line in stdout.lines() {
+                            if line.contains("http") && line.contains("token") {
+                                // 提取 URL
+                                let url = line.trim();
+                                if url.starts_with("http") {
+                                    token_url = url.to_string();
+                                    break;
                                 }
                             }
-                            found_url.unwrap_or_else(|| "http://localhost:18789".to_string())
                         }
-                        Err(_) => "http://localhost:18789".to_string()
-                    };
+                    }
+                    
+                    // 方式2: 如果方式1失败，尝试从容器内获取
+                    if token_url == "http://localhost:18789" {
+                        let exec_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                            .args(&["-NoProfile", "-Command", "docker exec openclaw-yuanhuiwang cat /home/node/.openclaw/token.txt 2>$null"])
+                            .creation_flags(CREATE_NO_WINDOW)
+                            .output();
+                        
+                        if let Ok(output) = exec_result {
+                            let stdout = String::from_utf8_lossy(&output.stdout);
+                            if !stdout.trim().is_empty() {
+                                token_url = format!("http://localhost:18789/#token={}", stdout.trim());
+                            }
+                        }
+                    }
                     
                     // 发送 token URL 给前端
                     app.emit("model-progress", format!("✅ 获取到访问链接: {}", token_url)).ok();
