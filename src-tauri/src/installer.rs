@@ -1935,6 +1935,52 @@ providers:
                     // 发送 token URL 给前端
                     app.emit("model-progress", format!("✅ 获取到访问链接: {}", token_url)).ok();
                     app.emit("docker-token-url", &token_url).ok();
+
+                    // 关键修复：验证 Gateway 服务是否真正可用
+                    app.emit("model-progress", "验证 Gateway 服务...".to_string()).ok();
+                    
+                    let client = reqwest::Client::builder()
+                        .timeout(std::time::Duration::from_secs(5))
+                        .build()
+                        .ok();
+                    
+                    let mut gateway_ready = false;
+                    
+                    for i in 1..=30 {
+                        app.emit("model-progress", format!("检测 Gateway... ({}/30)", i)).ok();
+                        
+                        if let Some(ref client) = client {
+                            match client.get("http://localhost:18789/api/health").send().await {
+                                Ok(res) if res.status().is_success() => {
+                                    gateway_ready = true;
+                                    app.emit("model-progress", "✅ Gateway 服务已就绪".to_string()).ok();
+                                    break;
+                                }
+                                Ok(res) => {
+                                    app.emit("model-progress", format!("Gateway 返回状态: {}", res.status())).ok();
+                                }
+                                Err(e) => {
+                                    app.emit("model-progress", format!("Gateway 未就绪: {}", e)).ok();
+                                }
+                            }
+                        }
+                        
+                        std::thread::sleep(std::time::Duration::from_secs(2));
+                    }
+                    
+                    if !gateway_ready {
+                        // 获取容器日志帮助诊断
+                        let log_result = Command::new("C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")
+                            .args(&["-NoProfile", "-Command", "docker logs openclaw-yuanhuiwang --tail 50"])
+                            .creation_flags(CREATE_NO_WINDOW)
+                            .output();
+                        
+                        if let Ok(output) = log_result {
+                            let logs = String::from_utf8_lossy(&output.stdout);
+                            app.emit("model-progress", format!("❌ Gateway 服务启动失败\n\n容器日志:\n{}", logs)).ok();
+                            return Err("Gateway 服务启动失败，请查看日志".to_string());
+                        }
+                    }
                     
                     // 直接返回
                     return Ok(format!("Docker 部署成功！\n\n请访问 {} \n\n✅ 已配置纯本地模型 phi3.5\n✅ 使用本机硬件算力", token_url));
