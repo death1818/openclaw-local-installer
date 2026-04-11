@@ -1785,9 +1785,9 @@ gateway:
     required: false
     token: ""
 
-# 本地 Ollama 配置 - 连接宿主机
+# 本地 Ollama 配置 - 连接本机
 ollama:
-  url: "http://host.docker.internal:11434"
+  url: "http://127.0.0.1:11434"
   contextTokens: 24576
 
 # 模型提供商 - 仅本地
