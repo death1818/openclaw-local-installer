@@ -37,6 +37,14 @@ interface InstalledModel {
   size: string
 }
 
+// Ollama 综合状态
+interface OllamaStatus {
+  api_running: boolean
+  installed: boolean
+  models: InstalledModel[]
+  error: string | null
+}
+
 interface ModelDetails {
   format: string
   family: string
@@ -124,6 +132,7 @@ function App() {
   
   const [hardware, setHardware] = useState<HardwareInfo | null>(null)
   const [models, setModels] = useState<ModelRecommendation[]>([])
+  const [installedModelList, setInstalledModelList] = useState<InstalledModel[]>([])
   const [ollamaInstalled, setOllamaInstalled] = useState<boolean>(false)
   const [selectedModel, setSelectedModel] = useState<string>('')
   const [installLog, setInstallLog] = useState<string[]>([])
@@ -809,30 +818,38 @@ function App() {
           </span>
         </div>
         <div className="flex items-center justify-between mb-3">
-          <span className="text-sm">phi3.5 模型:</span>
-          <span className={models.some(m => m.name.includes('phi3.5')) ? 'text-green-600 font-medium' : 'text-red-500'}>
-            {models.some(m => m.name.includes('phi3.5')) ? '✅ 已下载' : '❌ 未下载'}
+          <span className="text-sm">模型状态:</span>
+          <span className={installedModelList && installedModelList.length > 0 ? 'text-green-600 font-medium' : 'text-red-500'}>
+            {installedModelList && installedModelList.length > 0 ? `✅ 已下载 (${installedModelList.length}个)` : '❌ 未检测到模型'}
           </span>
         </div>
         <button
           onClick={async () => {
             setProgressMessage('🔍 检测中...')
             try {
-              const ollamaStatus = await invoke<boolean>('check_ollama_installed')
-              setOllamaInstalled(ollamaStatus)
+              // 使用新的综合检测命令
+              const status = await invoke<OllamaStatus>('check_ollama_status')
               
-              // 检测模型
-              const modelList = await invoke<any[]>('get_model_list')
-              setModels(modelList || [])
+              setOllamaInstalled(status.installed)
+              setInstalledModelList(status.models || [])
               
-              if (ollamaStatus && modelList?.some((m: any) => m.name?.includes('phi3.5'))) {
+              if (status.error) {
+                setProgressMessage('⚠️ ' + status.error)
+                return
+              }
+              
+              if (status.installed && status.models && status.models.length > 0) {
                 setProgressMessage('✅ 检测通过！即将进入启动器...')
                 setTimeout(() => {
                   setDockerMode(true)
                   setStep('launcher')
                 }, 1500)
+              } else if (status.installed && (!status.models || status.models.length === 0)) {
+                setProgressMessage('⚠️ Ollama 已安装但未下载模型，请先运行: ollama pull phi3.5')
+              } else if (!status.api_running) {
+                setProgressMessage('⚠️ Ollama 服务未启动，请运行: ollama serve')
               } else {
-                setProgressMessage('⚠️ 请完成上述步骤后再检测')
+                setProgressMessage('⚠️ 请先安装 Ollama')
               }
             } catch (e) {
               setProgressMessage('❌ 检测失败: ' + e)

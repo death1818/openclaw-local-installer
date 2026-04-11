@@ -14,6 +14,7 @@ use hardware::detect_hardware;
 use installer::{
     get_recommended_models,
     check_ollama_installed,
+    check_ollama_status,
     install_ollama,
     pull_model,
     configure_openclaw,
@@ -61,6 +62,7 @@ fn main() {
             detect_hardware,
             get_recommended_models,
             check_ollama_installed,
+            check_ollama_status,
             install_ollama,
             pull_model,
             cancel_model_download,

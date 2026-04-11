@@ -4,6 +4,9 @@ use tauri::Emitter;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
+// 导入models模块的InstalledModel
+use crate::models::InstalledModel;
+
 /// 查找 Node.js 可执行文件路径
 #[cfg(target_os = "windows")]
 fn find_node_exe() -> Option<String> {
@@ -413,6 +416,153 @@ pub async fn check_ollama_installed() -> Result<bool, String> {
     }
     
     Ok(false)
+}
+
+// Ollama综合状态检测（包含API和模型列表）
+#[derive(serde::Serialize)]
+pub struct OllamaStatus {
+    pub api_running: bool,
+    pub installed: bool,
+    pub models: Vec<InstalledModel>,
+    pub error: Option<String>,
+}
+
+#[tauri::command]
+pub async fn check_ollama_status() -> Result<OllamaStatus, String> {
+    // 先检查API是否可访问
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build().map_err(|e| e.to_string())?;
+    
+    let api_running = client.get("http://127.0.0.1:11434/api/version")
+        .send().await
+        .ok()
+        .map(|r| r.status().is_success())
+        .unwrap_or(false);
+    
+    // 尝试获取模型列表
+    let models = if api_running {
+        let output = Command::new("ollama")
+            .args(&["list"])
+            .output();
+        
+        match output {
+            Ok(out) => {
+                if out.status.success() {
+                    let stdout = String::from_utf8_lossy(&out.stdout);
+                    let mut model_list = Vec::new();
+                    
+                    // 解析输出（跳过标题行）
+                    for line in stdout.lines().skip(1) {
+                        let parts: Vec<&str> = line.split_whitespace().collect();
+                        if parts.len() >= 3 {
+                            // 处理Windows和Linux不同格式
+                            let name = parts[0].to_string();
+                            let size = parts.last().unwrap_or(&"").to_string();
+                            // modified_at 可能是多字段，取中间部分
+                            let modified = if parts.len() > 3 {
+                                parts[1..parts.len()-1].join(" ")
+                            } else {
+                                parts.get(1).unwrap_or(&"").to_string()
+                            };
+                            
+                            if !name.is_empty() && name != "-" {
+                                model_list.push(InstalledModel {
+                                    name,
+                                    modified_at: modified,
+                                    size,
+                                });
+                            }
+                        }
+                    }
+                    model_list
+                } else {
+                    Vec::new()
+                }
+            }
+            Err(e) => {
+                return Ok(OllamaStatus {
+                    api_running,
+                    installed: false,
+                    models: Vec::new(),
+                    error: Some(format!("执行ollama list失败: {}", e)),
+                });
+            }
+        }
+    } else {
+        Vec::new()
+    };
+    
+    Ok(OllamaStatus {
+        api_running,
+        installed: api_running,  // API可访问即表示已安装
+        models,
+        error: None,
+    })
+}
+
+// 检查是否有任何模型已安装（通用方法）
+#[tauri::command]
+pub async fn check_any_model_installed() -> Result<bool, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let output = Command::new("ollama")
+            .args(&["list"])
+            .output();
+        
+        match output {
+            Ok(out) => {
+                if out.status.success() {
+                    let stdout = String::from_utf8_lossy(&out.stdout);
+                    // 检查是否有任何模型（跳过标题行）
+                    let lines: Vec<&str> = stdout.lines().skip(1).collect();
+                    Ok(!lines.is_empty())
+                } else {
+                    Ok(false)
+                }
+            }
+            Err(_) => Ok(false),
+        }
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        let output = Command::new("ollama")
+            .args(&["list"])
+            .output();
+        
+        match output {
+            Ok(out) => {
+                if out.status.success() {
+                    let stdout = String::from_utf8_lossy(&out.stdout);
+                    let lines: Vec<&str> = stdout.lines().skip(1).collect();
+                    Ok(!lines.is_empty())
+                } else {
+                    Ok(false)
+                }
+            }
+            Err(_) => Ok(false),
+        }
+    }
+}
+
+// 获取已安装模型数量
+#[tauri::command]
+pub async fn get_installed_model_count() -> Result<usize, String> {
+    let output = Command::new("ollama")
+        .args(&["list"])
+        .output()
+        .map_err(|e| format!("获取模型列表失败: {}", e))?;
+    
+    if !output.status.success() {
+        return Ok(0);
+    }
+    
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // 跳过标题行，统计模型数量
+    let count = stdout.lines().skip(1).filter(|line| !line.trim().is_empty()).count();
+    
+    Ok(count)
 }
 
 // 安装 Ollama
