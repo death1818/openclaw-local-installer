@@ -157,6 +157,14 @@ function App() {
   const [gatewayStatus, setGatewayStatus] = useState<'stopped' | 'starting' | 'running' | 'error'>('stopped')
   const [startupProgress, setStartupProgress] = useState(0) // 0-100
   const [dockerMode, setDockerMode] = useState(false) // Docker 部署模式
+  
+  // 聊天界面状态
+  const [chatMessages, setChatMessages] = useState<Array<{id: string, role: 'user' | 'assistant', content: string, timestamp: Date}>>([])
+  const [chatInput, setChatInput] = useState('')
+  const [chatLoading, setChatLoading] = useState(false)
+  const [chatModels, setChatModels] = useState<Array<{name: string, size?: number}>>([])
+  const [chatSelectedModel, setChatSelectedModel] = useState('')
+  const [chatConnected, setChatConnected] = useState(false)
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')
@@ -425,6 +433,13 @@ function App() {
       if (unlisten) unlisten()
     }
   }, [])
+
+  // 进入聊天界面时检查连接
+  useEffect(() => {
+    if (step === 'chat') {
+      checkChatConnection()
+    }
+  }, [step])
 
   // 验证成功后自动开始硬件检测
   useEffect(() => {
@@ -1675,35 +1690,218 @@ function App() {
     </div>
   )
 
+  // 检查 Gateway 连接并获取模型（通过 Rust 后端）
+  const checkChatConnection = async () => {
+    try {
+      const connected = await invoke<boolean>('check_gateway_status')
+      setChatConnected(connected)
+      
+      if (connected) {
+        const models = await invoke<Array<{name: string, size?: number}>>('get_gateway_models')
+        setChatModels(models)
+        if (models.length > 0 && !chatSelectedModel) {
+          setChatSelectedModel(models[0].name)
+        }
+      }
+    } catch (err) {
+      setChatConnected(false)
+    }
+  }
+
+  // 发送聊天消息（通过 Rust 后端）
+  const sendChatMessage = async () => {
+    if (!chatInput.trim() || chatLoading) return
+    
+    const userMessage = {
+      id: Date.now().toString(),
+      role: 'user' as const,
+      content: chatInput.trim(),
+      timestamp: new Date()
+    }
+    
+    setChatMessages(prev => [...prev, userMessage])
+    setChatInput('')
+    setChatLoading(true)
+    
+    const assistantId = (Date.now() + 1).toString()
+    
+    try {
+      const result = await invoke<string>('send_chat_message', {
+        messages: [...chatMessages, userMessage].map(m => ({ role: m.role, content: m.content })),
+        model: chatSelectedModel
+      })
+      
+      setChatMessages(prev => [...prev, {
+        id: assistantId,
+        role: 'assistant',
+        content: result,
+        timestamp: new Date()
+      }])
+    } catch (err) {
+      setChatMessages(prev => [...prev, {
+        id: assistantId,
+        role: 'assistant',
+        content: `❌ 发送失败: ${err}\n\n请确保:\n1. Gateway 正在运行\n2. 本地模型已加载`,
+        timestamp: new Date()
+      }])
+    }
+    setChatLoading(false)
+  }
+
   // 聊天界面
   const renderChat = () => (
-    <div className="h-[calc(100vh-73px)] flex flex-col bg-gray-50 dark:bg-gray-900">
+    <div className="h-[calc(100vh-73px)] flex flex-col bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800">
       {/* 顶部栏 */}
-      <div className="flex items-center justify-between px-4 py-2 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between px-4 py-3 bg-white/80 dark:bg-gray-800/80 backdrop-blur border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center gap-3">
           <button
             onClick={() => setStep('launcher')}
-            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
             title="返回启动器"
           >
             ← 返回
           </button>
-          <span className="font-medium">💬 本地聊天</span>
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+              <span className="text-white text-sm">🤖</span>
+            </div>
+            <div>
+              <div className="font-medium text-sm">OpenClaw 本地聊天</div>
+              <div className="flex items-center gap-1 text-xs text-gray-500">
+                <span className={`w-1.5 h-1.5 rounded-full ${chatConnected ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                {chatConnected ? '已连接' : '未连接'}
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-2 text-sm text-gray-500">
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-green-500"></span>
-            本地模型
-          </span>
+        
+        <div className="flex items-center gap-2">
+          {/* 模型选择 */}
+          <select
+            value={chatSelectedModel}
+            onChange={(e) => setChatSelectedModel(e.target.value)}
+            className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {chatModels.length === 0 ? (
+              <option value="">加载模型中...</option>
+            ) : (
+              chatModels.map(m => (
+                <option key={m.name} value={m.name}>{m.name}</option>
+              ))
+            )}
+          </select>
+          
+          {/* 刷新连接 */}
+          <button
+            onClick={checkChatConnection}
+            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            title="刷新连接"
+          >
+            🔄
+          </button>
+          
+          {/* 清空对话 */}
+          <button
+            onClick={() => setChatMessages([])}
+            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-gray-500"
+            title="清空对话"
+          >
+            🗑️
+          </button>
         </div>
       </div>
       
-      {/* 聊天内容 */}
-      <iframe 
-        src="/chat/index.html"
-        className="flex-1 w-full border-0"
-        title="OpenClaw Local Chat"
-      />
+      {/* 消息列表 */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {chatMessages.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center text-center">
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 flex items-center justify-center mb-4">
+              <span className="text-4xl">🤖</span>
+            </div>
+            <h2 className="text-xl font-medium mb-2 text-gray-700 dark:text-gray-200">开始对话</h2>
+            <p className="text-gray-500 dark:text-gray-400 max-w-md">
+              使用本地模型 <span className="font-medium text-blue-600 dark:text-blue-400">{chatSelectedModel || 'phi3.5'}</span> 进行对话<br/>
+              完全本地运行，数据安全可靠
+            </p>
+            {!chatConnected && (
+              <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg text-red-600 dark:text-red-400 text-sm">
+                ⚠️ 无法连接到 Gateway，请先启动服务
+              </div>
+            )}
+          </div>
+        ) : (
+          chatMessages.map(msg => (
+            <div key={msg.id} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              {msg.role === 'assistant' && (
+                <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                  <span className="text-white text-sm">🤖</span>
+                </div>
+              )}
+              <div
+                className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
+                  msg.role === 'user'
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm'
+                }`}
+              >
+                <div className="whitespace-pre-wrap break-words text-sm">{msg.content}</div>
+                <div className={`text-xs mt-1 ${msg.role === 'user' ? 'text-blue-100' : 'text-gray-400'}`}>
+                  {msg.timestamp.toLocaleTimeString()}
+                </div>
+              </div>
+              {msg.role === 'user' && (
+                <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+                  <span className="text-sm">👤</span>
+                </div>
+              )}
+            </div>
+          ))
+        )}
+        {chatLoading && (
+          <div className="flex gap-3 justify-start">
+            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+              <span className="text-white text-sm">🤖</span>
+            </div>
+            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl px-4 py-2.5">
+              <div className="flex items-center gap-2 text-gray-400 text-sm">
+                <span className="animate-spin">⏳</span>
+                <span>思考中...</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+      
+      {/* 输入区域 */}
+      <div className="flex-shrink-0 p-4 bg-white/80 dark:bg-gray-800/80 backdrop-blur border-t border-gray-200 dark:border-gray-700">
+        <div className="max-w-4xl mx-auto flex gap-2">
+          <textarea
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                sendChatMessage()
+              }
+            }}
+            placeholder="输入消息... (Enter发送, Shift+Enter换行)"
+            className="flex-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+            rows={1}
+            style={{ minHeight: '48px', maxHeight: '150px' }}
+            disabled={!chatConnected}
+          />
+          <button
+            onClick={sendChatMessage}
+            disabled={!chatInput.trim() || chatLoading || !chatConnected}
+            className="px-5 py-3 rounded-xl bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-colors flex items-center gap-2"
+          >
+            {chatLoading ? <span className="animate-spin">⏳</span> : <span>发送</span>}
+          </button>
+        </div>
+        <div className="mt-2 text-xs text-gray-400 text-center">
+          纯本地运行 · 数据安全 · 模型: {chatSelectedModel || 'phi3.5'}
+        </div>
+      </div>
     </div>
   )
 

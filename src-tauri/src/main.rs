@@ -25,6 +25,9 @@ use installer::{
     start_openclaw,
     create_desktop_shortcut,
     deploy_docker,
+    check_gateway_status,
+    get_gateway_models,
+    send_chat_message,
 };
 use models::{
     list_models,
@@ -87,6 +90,10 @@ fn main() {
             get_installed_skills,
             check_skill_updates,
             uninstall_skill,
+            // 聊天功能
+            check_gateway_status,
+            get_gateway_models,
+            send_chat_message,
         ])
         .setup(move |app| {
             // 如果是启动模式，延迟发送事件给前端（确保前端已准备好）

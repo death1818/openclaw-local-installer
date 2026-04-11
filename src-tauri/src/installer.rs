@@ -1948,3 +1948,92 @@ providers:
         Err("Docker 一键部署暂仅支持 Windows".to_string())
     }
 }
+
+/// 检查 Gateway 连接状态
+#[tauri::command]
+pub async fn check_gateway_status() -> Result<bool, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|e| e.to_string())?
+    
+    match client.get("http://localhost:18789/api/health").send().await {
+        Ok(res) if res.status().is_success() => Ok(true),
+        _ => Ok(false),
+    }
+}
+
+/// 获取 Gateway 模型列表
+#[tauri::command]
+pub async fn get_gateway_models() -> Result<Vec<GatewayModel>, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?
+    
+    let response = client
+        .get("http://localhost:18789/api/models")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+    
+    response.json().await.map_err(|e| e.to_string())
+}
+
+/// 发送聊天消息到 Gateway
+#[tauri::command]
+pub async fn send_chat_message(
+    messages: Vec<ChatMsg>,
+    model: String,
+) -> Result<String, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| e.to_string())?
+    
+    let request = serde_json::json!({
+        "messages": messages,
+        "model": model,
+        "provider": "local",
+        "stream": false
+    });
+    
+    let response = client
+        .post("http://localhost:18789/api/chat")
+        .json(&request)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+    
+    if !response.status().is_success() {
+        return Err(format!("Gateway 错误: {}", response.status()))
+    }
+    
+    let result: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| e.to_string())?
+    
+    // 提取响应内容
+    let content = result
+        .get("content")
+        .and_then(|v| v.as_str())
+        .or_else(|| result.get("message")?.get("content")?.as_str())
+        .or_else(|| result.get("response")?.as_str())
+        .unwrap_or(&result.to_string())
+        .to_string();
+    
+    Ok(content)
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct GatewayModel {
+    name: String,
+    size: Option<u64>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct ChatMsg {
+    role: String,
+    content: String,
+}
