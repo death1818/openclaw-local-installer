@@ -1818,7 +1818,7 @@ providers:
         
         // 检查容器是否已存在并启动
         let check_container = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", "docker ps -a --filter name=openclaw-缘辉旺本地版 --format '{{.Names}}'"])
+            .args(&["-NoProfile", "-Command", "docker ps -a --filter name=openclaw-yunhuiwang --format '{{.Names}}'"])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         
@@ -1834,17 +1834,17 @@ providers:
             // 容器已存在，先删除再创建
             app.emit("model-progress", "清理旧容器...".to_string()).ok();
             let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                .args(&["-NoProfile", "-Command", "docker rm -f openclaw-缘辉旺本地版"])
+                .args(&["-NoProfile", "-Command", "docker rm -f openclaw-yunhuiwang"])
                 .creation_flags(CREATE_NO_WINDOW)
                 .output();
             
             Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-缘辉旺本地版 -p 18789:18789 -v \"$env:USERPROFILE\\.openclaw:/home/node/.openclaw\" -e OLLAMA_HOST=http://host.docker.internal:11434 -e OLLAMA_MODEL_DIR=/root/.ollama/models --add-host=host.docker.internal:host-gateway ghcr.io/openclaw/openclaw:latest"])
+                .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-yunhuiwang -p 18789:18789 -v \"$env:USERPROFILE\\.openclaw:/home/node/.openclaw\" -e OLLAMA_HOST=http://host.docker.internal:11434 -e OLLAMA_MODEL_DIR=/root/.ollama/models --add-host=host.docker.internal:host-gateway ghcr.io/openclaw/openclaw:latest"])
                 .creation_flags(CREATE_NO_WINDOW)
                 .output()
         } else {
             Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-缘辉旺本地版 -p 18789:18789 -v \"$env:USERPROFILE\\.openclaw:/home/node/.openclaw\" -e OLLAMA_HOST=http://host.docker.internal:11434 -e OLLAMA_MODEL_DIR=/root/.ollama/models --add-host=host.docker.internal:host-gateway ghcr.io/openclaw/openclaw:latest"])
+                .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-yunhuiwang -p 18789:18789 -v \"$env:USERPROFILE\\.openclaw:/home/node/.openclaw\" -e OLLAMA_HOST=http://host.docker.internal:11434 -e OLLAMA_MODEL_DIR=/root/.ollama/models --add-host=host.docker.internal:host-gateway ghcr.io/openclaw/openclaw:latest"])
                 .creation_flags(CREATE_NO_WINDOW)
                 .output()
         };
@@ -1852,7 +1852,7 @@ providers:
         match run_result {
             Ok(output) => {
                 let stdout = String::from_utf8_lossy(&output.stdout);
-                if output.status.success() || stdout.contains("openclaw-缘辉旺本地版") {
+                if output.status.success() || stdout.contains("openclaw-yunhuiwang") {
                     app.emit("model-progress", "✅ 容器启动成功！".to_string()).ok();
                     
                     // 保存 Docker 部署状态
@@ -1867,7 +1867,7 @@ providers:
                     
                     // 在容器内创建配置目录
                     let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                        .args(&["-NoProfile", "-Command", "docker exec openclaw-缘辉旺本地版 mkdir -p /home/node/.openclaw"])
+                        .args(&["-NoProfile", "-Command", "docker exec openclaw-yunhuiwang mkdir -p /home/node/.openclaw"])
                         .creation_flags(CREATE_NO_WINDOW)
                         .output();
                     
@@ -1878,7 +1878,7 @@ providers:
                     
                     // 重启容器使配置生效
                     let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                        .args(&["-NoProfile", "-Command", "docker restart openclaw-缘辉旺本地版"])
+                        .args(&["-NoProfile", "-Command", "docker restart openclaw-yunhuiwang"])
                         .creation_flags(CREATE_NO_WINDOW)
                         .output();
                     
