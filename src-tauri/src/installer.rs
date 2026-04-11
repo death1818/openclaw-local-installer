@@ -1970,7 +1970,7 @@ providers:
                     
                     if !gateway_ready {
                         // 获取容器日志帮助诊断
-                        let log_result = Command::new("C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")
+                        let log_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
                             .args(&["-NoProfile", "-Command", "docker logs openclaw-yuanhuiwang --tail 50"])
                             .creation_flags(CREATE_NO_WINDOW)
                             .output();
