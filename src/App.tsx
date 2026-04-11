@@ -88,7 +88,7 @@ interface SkillInstallProgress {
   message: string
 }
 
-type InstallStep = 'welcome' | 'license' | 'preparing' | 'detecting' | 'select-model' | 'installing' | 'complete' | 'model-management' | 'skill-management' | 'launcher' | 'ollama-setup'
+type InstallStep = 'welcome' | 'license' | 'preparing' | 'detecting' | 'select-model' | 'installing' | 'complete' | 'model-management' | 'skill-management' | 'launcher' | 'ollama-setup' | 'chat'
 type Theme = 'light' | 'dark'
 
 // 授权码格式验证
@@ -1524,6 +1524,13 @@ function App() {
           技能管理
         </button>
         <button
+          onClick={() => setStep('chat')}
+          className="px-3 py-1.5 text-sm bg-primary-500 text-white rounded-lg hover:bg-primary-600 flex items-center gap-1"
+          title="打开本地聊天界面"
+        >
+          💬 聊天
+        </button>
+        <button
           onClick={() => {
             // 打开 Docker 方案说明页面
             window.open('https://github.com/flottokarotto/openclaw-ollama-setup', '_blank')
@@ -1667,6 +1674,38 @@ function App() {
     </div>
   )
 
+  // 聊天界面
+  const renderChat = () => (
+    <div className="h-[calc(100vh-73px)] flex flex-col bg-gray-50 dark:bg-gray-900">
+      {/* 顶部栏 */}
+      <div className="flex items-center justify-between px-4 py-2 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setStep('launcher')}
+            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+            title="返回启动器"
+          >
+            ← 返回
+          </button>
+          <span className="font-medium">💬 本地聊天</span>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-gray-500">
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-green-500"></span>
+            本地模型
+          </span>
+        </div>
+      </div>
+      
+      {/* 聊天内容 */}
+      <iframe 
+        src="/chat/index.html"
+        className="flex-1 w-full border-0"
+        title="OpenClaw Local Chat"
+      />
+    </div>
+  )
+
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'dark' : ''}`}>
       <div className="min-h-screen bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
@@ -1691,6 +1730,8 @@ function App() {
         {/* 主内容 */}
         {step === 'launcher' ? (
           renderLauncher()
+        ) : step === 'chat' ? (
+          renderChat()
         ) : (
           <div className="max-w-2xl mx-auto px-6 py-12">
             {error && (

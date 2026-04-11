@@ -1,10 +1,10 @@
 {
   "name": "openclaw-local-installer",
-  "version": "2.2.4",
+  "version": "2.4.0",
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc && vite build && mkdir -p dist/chat && cp -r public/chat/* dist/chat/ 2>/dev/null || true",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
