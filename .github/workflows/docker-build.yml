@@ -14,8 +14,8 @@ on:
         type: string
 
 env:
-  DOCKERHUB_USERNAME: yuanhuiwang
-  IMAGE_NAME: yuanhuiwang/openclaw
+  DOCKERHUB_USERNAME: chenlong999988
+  IMAGE_NAME: chenlong999988/openclaw
 
 jobs:
   build:

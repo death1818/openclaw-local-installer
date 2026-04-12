@@ -1686,8 +1686,8 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         // 步骤3: 检查镜像是否存在，如果不存在则拉取
         app.emit("model-progress", "[3/6] 检查镜像...".to_string()).ok();
         
-        // 优先使用 Docker Hub 公开镜像
-        let image_name = "yuanhuiwang/openclaw:latest";
+        // 使用 Docker Hub 公开镜像
+        let image_name = "chenlong999988/openclaw:latest";
         
         // 先检查镜像是否已存在
         let check_image = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
@@ -1709,7 +1709,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
             app.emit("model-progress", "[3/6] 拉取镜像（可能需要几分钟）...".to_string()).ok();
             
             let pull_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                .args(&["-NoProfile", "-Command", "docker pull yuanhuiwang/openclaw:latest 2>&1"])
+                .args(&["-NoProfile", "-Command", "docker pull chenlong999988/openclaw:latest 2>&1"])
                 .creation_flags(CREATE_NO_WINDOW)
                 .output();
             
@@ -1880,12 +1880,12 @@ providers:
                 .output();
             
             Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-yuanhuiwang -p 18789:18789 -v \"$env:USERPROFILE\\.openclaw:/root/.openclaw\" -e OLLAMA_HOST=http://host.docker.internal:11434 -e OLLAMA_MODEL_DIR=/root/.ollama/models -e OPENCLAW_AUTH_NONE=true --add-host=host.docker.internal:host-gateway yuanhuiwang/openclaw:latest"])
+                .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-yuanhuiwang -p 18789:18789 -v \"$env:USERPROFILE\\.openclaw:/root/.openclaw\" -e OLLAMA_HOST=http://host.docker.internal:11434 -e OLLAMA_MODEL_DIR=/root/.ollama/models -e OPENCLAW_AUTH_NONE=true --add-host=host.docker.internal:host-gateway chenlong999988/openclaw:latest"])
                 .creation_flags(CREATE_NO_WINDOW)
                 .output()
         } else {
             Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-yuanhuiwang -p 18789:18789 -v \"$env:USERPROFILE\\.openclaw:/root/.openclaw\" -e OLLAMA_HOST=http://host.docker.internal:11434 -e OLLAMA_MODEL_DIR=/root/.ollama/models -e OPENCLAW_AUTH_NONE=true --add-host=host.docker.internal:host-gateway yuanhuiwang/openclaw:latest"])
+                .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-yuanhuiwang -p 18789:18789 -v \"$env:USERPROFILE\\.openclaw:/root/.openclaw\" -e OLLAMA_HOST=http://host.docker.internal:11434 -e OLLAMA_MODEL_DIR=/root/.ollama/models -e OPENCLAW_AUTH_NONE=true --add-host=host.docker.internal:host-gateway chenlong999988/openclaw:latest"])
                 .creation_flags(CREATE_NO_WINDOW)
                 .output()
         };
