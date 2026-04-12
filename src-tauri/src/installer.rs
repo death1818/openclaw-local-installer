@@ -1325,14 +1325,25 @@ fn check_process_exists(process_name: &str) -> bool {
     }
 }
 
-/// 检查端口是否被监听
+/// 检查 Gateway 服务是否就绪
 async fn check_port_listening(port: u16) -> bool {
     if let Ok(client) = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(2))
         .build()
     {
-        let url = format!("http://127.0.0.1:{}", port);
-        client.get(&url).send().await.is_ok()
+        // 尝试多个健康检查端点
+        let endpoints = vec![
+            format!("http://127.0.0.1:{}/healthz", port),
+            format!("http://127.0.0.1:{}/health", port),
+            format!("http://127.0.0.1:{}", port),
+        ];
+        
+        for url in endpoints {
+            if client.get(&url).send().await.is_ok() {
+                return true;
+            }
+        }
+        false
     } else {
         false
     }
@@ -1967,8 +1978,10 @@ providers:
         }
         
         // 启动新容器（使用已确定的有效镜像）
+        // 重要：官方镜像默认绑定127.0.0.1，需要--bind lan才能从宿主机访问
+        // 注意：PowerShell 变量 $env:USERPROFILE 会在运行时展开
         let run_cmd = format!(
-            "docker run -d --name openclaw-yuanhuiwang -p 18789:18789 -v \"$env:USERPROFILE\\.openclaw:/root/.openclaw\" -e OLLAMA_HOST=http://host.docker.internal:11434 -e OLLAMA_MODEL_DIR=/root/.ollama/models -e OPENCLAW_AUTH_NONE=true --add-host=host.docker.internal:host-gateway {}",
+            r"docker run -d --name openclaw-yuanhuiwang -p 18789:18789 -v \"$env:USERPROFILE\.openclaw:/root/.openclaw\" -e OLLAMA_HOST=http://host.docker.internal:11434 -e OPENCLAW_AUTH_NONE=true --add-host=host.docker.internal:host-gateway {} node openclaw.mjs gateway --allow-unconfigured --bind lan",
             image_name
         );
         
@@ -2073,18 +2086,38 @@ providers:
                         app.emit("model-progress", format!("检测 Gateway... ({}/30)", i)).ok();
                         
                         if let Some(ref client) = client {
-                            match client.get("http://localhost:18789/api/health").send().await {
-                                Ok(res) if res.status().is_success() => {
-                                    gateway_ready = true;
-                                    app.emit("model-progress", "✅ Gateway 服务已就绪".to_string()).ok();
-                                    break;
+                            // 尝试多个健康检查端点
+                            let health_endpoints = vec![
+                                "http://localhost:18789/healthz",
+                                "http://localhost:18789/health",
+                                "http://localhost:18789/",
+                                "http://localhost:18789/api/models",
+                            ];
+                            
+                            for endpoint in &health_endpoints {
+                                match client.get(*endpoint).timeout(std::time::Duration::from_secs(3)).send().await {
+                                    Ok(res) if res.status().is_success() || res.status().as_u16() == 404 => {
+                                        // 404 也算服务就绪（说明 Gateway 正在响应）
+                                        gateway_ready = true;
+                                        app.emit("model-progress", format!("✅ Gateway 服务已就绪 ({})", endpoint)).ok();
+                                        break;
+                                    }
+                                    Ok(res) => {
+                                        // 任何响应都说明服务在运行
+                                        if res.status().as_u16() < 500 {
+                                            gateway_ready = true;
+                                            app.emit("model-progress", format!("✅ Gateway 响应: {} ({})", res.status(), endpoint)).ok();
+                                            break;
+                                        }
+                                    }
+                                    Err(_) => {
+                                        // 继续尝试下一个端点
+                                    }
                                 }
-                                Ok(res) => {
-                                    app.emit("model-progress", format!("Gateway 返回状态: {}", res.status())).ok();
-                                }
-                                Err(e) => {
-                                    app.emit("model-progress", format!("Gateway 未就绪: {}", e)).ok();
-                                }
+                            }
+                            
+                            if gateway_ready {
+                                break;
                             }
                         }
                         
