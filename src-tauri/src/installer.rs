@@ -2425,39 +2425,96 @@ pub async fn send_chat_message(
         .build()
         .map_err(|e| e.to_string())?;
 
+    // 尝试多个 API 端点
+    let endpoints = vec![
+        "http://localhost:18789/v1/chat/completions",
+        "http://localhost:18789/api/chat",
+        "http://localhost:18789/chat",
+    ];
+    
+    // 构建 OpenAI 兼容格式的请求
     let request = serde_json::json!({
         "messages": messages,
         "model": model,
-        "provider": "local",
         "stream": false
     });
-
-    let response = client
-        .post("http://localhost:18789/api/chat")
-        .json(&request)
+    
+    for endpoint in &endpoints {
+        let response = client
+            .post(*endpoint)
+            .json(&request)
+            .send()
+            .await;
+        
+        if let Ok(res) = response {
+            if res.status().is_success() {
+                if let Ok(result) = res.json::<serde_json::Value>().await {
+                    // 尝试多种响应格式提取
+                    // OpenAI 格式: choices[0].message.content
+                    if let Some(content) = result.get("choices")
+                        .and_then(|c| c.as_array())
+                        .and_then(|arr| arr.first())
+                        .and_then(|choice| choice.get("message"))
+                        .and_then(|msg| msg.get("content"))
+                        .and_then(|c| c.as_str()) {
+                        return Ok(content.to_string());
+                    }
+                    
+                    // 简单格式: content
+                    if let Some(content) = result.get("content").and_then(|v| v.as_str()) {
+                        return Ok(content.to_string());
+                    }
+                    
+                    // message.content 格式
+                    if let Some(content) = result.get("message")
+                        .and_then(|m| m.get("content"))
+                        .and_then(|c| c.as_str()) {
+                        return Ok(content.to_string());
+                    }
+                    
+                    // response 格式
+                    if let Some(content) = result.get("response").and_then(|v| v.as_str()) {
+                        return Ok(content.to_string());
+                    }
+                    
+                    // 返回原始响应
+                    return Ok(result.to_string());
+                }
+            }
+        }
+    }
+    
+    // 如果所有 Gateway 端点都失败，尝试直接调用 Ollama
+    let ollama_request = serde_json::json!({
+        "model": model,
+        "messages": messages,
+        "stream": false
+    });
+    
+    let ollama_response = client
+        .post("http://localhost:11434/api/chat")
+        .json(&ollama_request)
         .send()
         .await
-        .map_err(|e| e.to_string())?;
-
-    if !response.status().is_success() {
-        return Err(format!("Gateway 错误: {}", response.status()));
+        .map_err(|e| format!("所有API端点调用失败: {}", e))?;
+    
+    if !ollama_response.status().is_success() {
+        return Err(format!("Ollama 错误: {}", ollama_response.status()));
     }
-
-    let result: serde_json::Value = response
+    
+    let result: serde_json::Value = ollama_response
         .json()
         .await
         .map_err(|e| e.to_string())?;
-
-    // 提取响应内容
-    let content = result
-        .get("content")
-        .and_then(|v| v.as_str())
-        .or_else(|| result.get("message")?.get("content")?.as_str())
-        .or_else(|| result.get("response")?.as_str())
-        .unwrap_or(&result.to_string())
-        .to_string();
-
-    Ok(content)
+    
+    // Ollama 响应格式: message.content
+    if let Some(content) = result.get("message")
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_str()) {
+        return Ok(content.to_string());
+    }
+    
+    Ok(result.to_string())
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -2541,21 +2598,20 @@ pub async fn get_docker_token_url() -> Result<String, String> {
     
     let mut token_url = "http://localhost:18789".to_string();
     
-    // 方式1: 运行 openclaw dashboard 命令获取
+    // 方式1: 运行 openclaw dashboard 命令获取（正确的路径和参数）
     let dashboard_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-        .args(&["-NoProfile", "-Command", "docker exec openclaw-yuanhuiwang node openclaw.mjs dashboard 2>&1"])
+        .args(&["-NoProfile", "-Command", "docker exec openclaw-yuanhuiwang node /app/openclaw.mjs dashboard --no-open 2>&1"])
         .creation_flags(CREATE_NO_WINDOW)
         .output();
     
     if let Ok(output) = dashboard_result {
         let stdout = String::from_utf8_lossy(&output.stdout);
         for line in stdout.lines() {
-            if line.contains("http") && (line.contains("token") || line.contains("localhost:18789")) {
-                let url = line.trim();
-                if url.starts_with("http") {
-                    token_url = url.to_string();
-                    return Ok(token_url);
-                }
+            let trimmed = line.trim();
+            // 查找以 http:// 开头的完整 URL
+            if trimmed.starts_with("http://localhost") || trimmed.starts_with("http://127.0.0.1") {
+                token_url = trimmed.to_string();
+                return Ok(token_url);
             }
         }
     }
@@ -2578,8 +2634,26 @@ pub async fn get_docker_token_url() -> Result<String, String> {
         }
     }
     
-    // 方式3: 从容器内读取 token 文件
-    let paths = vec!["/root/.openclaw/token.txt", "/home/node/.openclaw/token.txt"];
+    // 方式3: 从容器内读取 .env 文件中的 token
+    let env_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+        .args(&["-NoProfile", "-Command", "docker exec openclaw-yuanhuiwang cat /home/node/.openclaw/.env 2>$null"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+    
+    if let Ok(output) = env_result {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines() {
+            if line.starts_with("OPENCLAW_GATEWAY_TOKEN=") {
+                let token = line.trim_start_matches("OPENCLAW_GATEWAY_TOKEN=").trim();
+                if !token.is_empty() {
+                    return Ok(format!("http://localhost:18789/?token={}", token));
+                }
+            }
+        }
+    }
+    
+    // 方式4: 从容器内读取 token 文件
+    let paths = vec!["/root/.openclaw/token.txt", "/home/node/.openclaw/token.txt", "/app/.openclaw/token.txt"];
     for path in paths {
         let exec_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
             .args(&["-NoProfile", "-Command", &format!("docker exec openclaw-yuanhuiwang cat {} 2>$null", path)])
@@ -2589,7 +2663,7 @@ pub async fn get_docker_token_url() -> Result<String, String> {
         if let Ok(output) = exec_result {
             let stdout = String::from_utf8_lossy(&output.stdout);
             if !stdout.trim().is_empty() {
-                return Ok(format!("http://localhost:18789/#token={}", stdout.trim()));
+                return Ok(format!("http://localhost:18789/?token={}", stdout.trim()));
             }
         }
     }
