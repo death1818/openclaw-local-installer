@@ -1636,7 +1636,7 @@ function App() {
           >
             🔑 获取令牌
           </button>
-        )}}
+        )}
         
         <div className="flex-1" />
         
