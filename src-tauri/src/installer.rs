@@ -1854,41 +1854,41 @@ providers:
         }
         app.emit("model-progress", &format!("配置文件路径: {:?}", config_path)).ok();
         
-        // 步骤5: 启动容器
+        // 步骤6: 启动容器
         app.emit("model-progress", "[6/6] 启动容器...".to_string()).ok();
         
-        // 检查容器是否已存在并启动
-        let check_container = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", "docker ps -a --filter name=openclaw-yuanhuiwang --format '{{.Names}}'"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output();
+        // 清理所有可能的旧容器名（包括 openclaw 和 openclaw-yuanhuiwang）
+        app.emit("model-progress", "检查并清理旧容器...".to_string()).ok();
         
-        let container_exists = match check_container {
-            Ok(output) => {
-                let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                !result.is_empty()
-            }
-            Err(_) => false,
-        };
-        
-        let run_result = if container_exists {
-            // 容器已存在，先删除再创建
-            app.emit("model-progress", "清理旧容器...".to_string()).ok();
-            let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                .args(&["-NoProfile", "-Command", "docker rm -f openclaw-yuanhuiwang"])
+        let old_container_names = vec!["openclaw", "openclaw-yuanhuiwang"];
+        for old_name in &old_container_names {
+            let check_old = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                .args(&["-NoProfile", "-Command", &format!("docker ps -a --filter name={} --format '{{{{.Names}}}}'", old_name)])
                 .creation_flags(CREATE_NO_WINDOW)
                 .output();
             
-            Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-yuanhuiwang -p 18789:18789 -v \"$env:USERPROFILE\\.openclaw:/root/.openclaw\" -e OLLAMA_HOST=http://host.docker.internal:11434 -e OLLAMA_MODEL_DIR=/root/.ollama/models -e OPENCLAW_AUTH_NONE=true --add-host=host.docker.internal:host-gateway chenlong999988/openclaw:latest"])
-                .creation_flags(CREATE_NO_WINDOW)
-                .output()
-        } else {
-            Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-yuanhuiwang -p 18789:18789 -v \"$env:USERPROFILE\\.openclaw:/root/.openclaw\" -e OLLAMA_HOST=http://host.docker.internal:11434 -e OLLAMA_MODEL_DIR=/root/.ollama/models -e OPENCLAW_AUTH_NONE=true --add-host=host.docker.internal:host-gateway chenlong999988/openclaw:latest"])
-                .creation_flags(CREATE_NO_WINDOW)
-                .output()
-        };
+            let old_exists = match check_old {
+                Ok(output) => {
+                    let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    !result.is_empty()
+                }
+                Err(_) => false,
+            };
+            
+            if old_exists {
+                app.emit("model-progress", format!("清理旧容器: {}", old_name)).ok();
+                let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                    .args(&["-NoProfile", "-Command", &format!("docker rm -f {}", old_name)])
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .output();
+            }
+        }
+        
+        // 启动新容器
+        let run_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-yuanhuiwang -p 18789:18789 -v \"$env:USERPROFILE\\.openclaw:/root/.openclaw\" -e OLLAMA_HOST=http://host.docker.internal:11434 -e OLLAMA_MODEL_DIR=/root/.ollama/models -e OPENCLAW_AUTH_NONE=true --add-host=host.docker.internal:host-gateway chenlong999988/openclaw:latest"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
         
         match run_result {
             Ok(output) => {
