@@ -19,16 +19,66 @@ pub struct ModelDetails {
 /// 获取已安装的模型列表
 #[tauri::command]
 pub async fn list_models() -> Result<Vec<InstalledModel>, String> {
-    let output = Command::new("ollama")
-        .args(&["list"])
-        .output()
-        .map_err(|e| format!("执行 ollama list 失败: {}", e))?;
-
-    if !output.status.success() {
-        return Err("Ollama 未运行或未安装".to_string());
+    // 在 Windows 上尝试多种方式执行 ollama list
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        
+        // 尝试直接执行 ollama
+        let output = Command::new("ollama")
+            .args(&["list"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        
+        if let Ok(o) = output {
+            if o.status.success() {
+                return parse_ollama_list(&String::from_utf8_lossy(&o.stdout));
+            }
+        }
+        
+        // 尝试通过 PowerShell 执行
+        let ps_output = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-NoProfile", "-Command", "ollama list 2>&1"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        
+        if let Ok(o) = ps_output {
+            if o.status.success() {
+                return parse_ollama_list(&String::from_utf8_lossy(&o.stdout));
+            }
+        }
+        
+        // 尝试从用户目录执行
+        let user_output = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-NoProfile", "-Command", "$env:Path = [System.Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path; ollama list 2>&1"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        
+        if let Ok(o) = user_output {
+            return parse_ollama_list(&String::from_utf8_lossy(&o.stdout));
+        }
+        
+        return Err("无法执行 ollama list，请确保 Ollama 已安装并添加到 PATH".to_string());
     }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        let output = Command::new("ollama")
+            .args(&["list"])
+            .output()
+            .map_err(|e| format!("执行 ollama list 失败: {}", e))?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+        if !output.status.success() {
+            return Err("Ollama 未运行或未安装".to_string());
+        }
+
+        parse_ollama_list(&String::from_utf8_lossy(&output.stdout))
+    }
+}
+
+/// 解析 ollama list 输出
+fn parse_ollama_list(stdout: &str) -> Result<Vec<InstalledModel>, String> {
     let mut models = Vec::new();
 
     // 解析输出（跳过标题行）

@@ -1433,8 +1433,7 @@ function App() {
                       await invoke('pull_model', { modelName: model.name })
                       setInstallLog(prev => [...prev, `✅ ${model.name} 安装成功`])
                       // 刷新已安装列表
-                      const models = await invoke<InstalledModel[]>('get_installed_models')
-                      setInstalledModels(models)
+                      await loadInstalledModels()
                     } catch (err) {
                       setInstallLog(prev => [...prev, `❌ 安装失败: ${err}`])
                     }
@@ -1819,13 +1818,20 @@ function App() {
         <div className="flex-1" />
         
         <button
-          onClick={() => setStep('model-management')}
+          onClick={async () => {
+            await loadInstalledModels()
+            setStep('model-management')
+          }}
           className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
         >
           模型管理
         </button>
         <button
-          onClick={() => setStep('skill-management')}
+          onClick={async () => {
+            await loadInstalledSkills()
+            await loadRecommendedSkills()
+            setStep('skill-management')
+          }}
           className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
         >
           技能管理
