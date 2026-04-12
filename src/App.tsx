@@ -376,7 +376,7 @@ function App() {
       // 非 Docker 模式，默认显示已停止
       console.log('非 Docker 模式，等待用户操作')
     }
-  }, [step]))
+  }, [step])
 
   // 监听 launch-mode 事件（从命令行参数 --launch 触发）
   useEffect(() => {
