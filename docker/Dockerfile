@@ -1,11 +1,11 @@
 # OpenClaw 本地版 Docker 镜像
 # 由缘辉旺团队维护，基于 npm 官方包构建
 
-FROM node:20-bookworm-slim
+FROM node:22-bookworm-slim
 
 LABEL maintainer="缘辉旺团队"
 LABEL description="OpenClaw 本地版 Gateway"
-LABEL version="1.0.0"
+LABEL version="1.0.1"
 
 # 设置时区
 ENV TZ=Asia/Shanghai
@@ -37,4 +37,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:18789/api/health || exit 1
 
 # 启动命令
-CMD ["openclaw", "gateway", "start", "--host", "0.0.0.0"]
+CMD ["npx", "openclaw", "gateway", "start", "--host", "0.0.0.0"]
