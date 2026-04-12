@@ -163,16 +163,30 @@ pub async fn install_skill(slug: String, app: tauri::AppHandle) -> Result<(), St
     app.emit("skill-install-progress", SkillInstallProgress {
         skill_name: slug.clone(),
         status: "installing".to_string(),
-        progress: 30,
-        message: "正在安装...".to_string(),
+        progress: 10,
+        message: format!("准备安装技能: {}", slug),
     }).ok();
     
     // 检查命令是否存在
     let has_skillhub = Command::new("skillhub").arg("--version").output().is_ok();
     let has_clawhub = Command::new("clawhub").arg("--version").output().is_ok();
     
+    app.emit("skill-install-progress", SkillInstallProgress {
+        skill_name: slug.clone(),
+        status: "installing".to_string(),
+        progress: 20,
+        message: "检查安装环境...".to_string(),
+    }).ok();
+    
     // 如果外部工具存在，优先使用
     if has_skillhub || has_clawhub {
+        app.emit("skill-install-progress", SkillInstallProgress {
+            skill_name: slug.clone(),
+            status: "installing".to_string(),
+            progress: 30,
+            message: "使用外部工具安装...".to_string(),
+        }).ok();
+        
         let result = if has_skillhub {
             Command::new("skillhub").args(&["install", &slug]).output()
         } else {
@@ -196,8 +210,8 @@ pub async fn install_skill(slug: String, app: tauri::AppHandle) -> Result<(), St
     app.emit("skill-install-progress", SkillInstallProgress {
         skill_name: slug.clone(),
         status: "installing".to_string(),
-        progress: 60,
-        message: "正在创建本地技能配置...".to_string(),
+        progress: 40,
+        message: "开始本地安装...".to_string(),
     }).ok();
     
     let skills_dir = dirs::config_dir()
@@ -205,10 +219,24 @@ pub async fn install_skill(slug: String, app: tauri::AppHandle) -> Result<(), St
         .join("openclaw")
         .join("skills");
     
+    app.emit("skill-install-progress", SkillInstallProgress {
+        skill_name: slug.clone(),
+        status: "installing".to_string(),
+        progress: 50,
+        message: "创建技能目录...".to_string(),
+    }).ok();
+    
     std::fs::create_dir_all(&skills_dir).map_err(|e| e.to_string())?;
     
     let skill_dir = skills_dir.join(&slug);
     std::fs::create_dir_all(&skill_dir).map_err(|e| e.to_string())?;
+    
+    app.emit("skill-install-progress", SkillInstallProgress {
+        skill_name: slug.clone(),
+        status: "installing".to_string(),
+        progress: 60,
+        message: "查找技能信息...".to_string(),
+    }).ok();
     
     // 从内置列表查找技能信息
     let builtin_skills = get_builtin_skills();
@@ -216,6 +244,13 @@ pub async fn install_skill(slug: String, app: tauri::AppHandle) -> Result<(), St
     
     let skill_name = skill_info.map(|s| s.name.clone()).unwrap_or_else(|| slug.clone());
     let description = skill_info.map(|s| s.description.clone()).unwrap_or_default();
+    
+    app.emit("skill-install-progress", SkillInstallProgress {
+        skill_name: slug.clone(),
+        status: "installing".to_string(),
+        progress: 70,
+        message: "生成技能配置...".to_string(),
+    }).ok();
     
     // 创建 skill.json
     let installed_at = std::time::SystemTime::now()
@@ -230,6 +265,13 @@ pub async fn install_skill(slug: String, app: tauri::AppHandle) -> Result<(), St
         "description": description,
         "installed_at": installed_at
     });
+    
+    app.emit("skill-install-progress", SkillInstallProgress {
+        skill_name: slug.clone(),
+        status: "installing".to_string(),
+        progress: 85,
+        message: "写入技能文件...".to_string(),
+    }).ok();
     
     let skill_file = skill_dir.join("skill.json");
     std::fs::write(&skill_file, serde_json::to_string_pretty(&skill_json).unwrap())

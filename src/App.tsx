@@ -166,6 +166,7 @@ function App() {
   const [skillUpdates, setSkillUpdates] = useState<RemoteSkill[]>([])
   const [skillSearchLoading, setSkillSearchLoading] = useState(false)
   const [installingSkill, setInstallingSkill] = useState<string | null>(null)
+  const [skillInstallProgress, setSkillInstallProgress] = useState<{skill: string, progress: number, message: string} | null>(null)
   
   // 启动器状态
   const [gatewayStatus, setGatewayStatus] = useState<'stopped' | 'starting' | 'running' | 'error'>('stopped')
@@ -306,11 +307,19 @@ function App() {
         console.log('Skill progress:', event.payload)
       }),
       listen<SkillInstallProgress>('skill-install-progress', (event) => {
+        console.log('Skill install progress:', event.payload)
+        setSkillInstallProgress({
+          skill: event.payload.skill_name,
+          progress: event.payload.progress,
+          message: event.payload.message
+        })
         if (event.payload.status === 'completed') {
           setInstallingSkill(null)
+          setSkillInstallProgress(null)
           loadInstalledSkills()
         } else if (event.payload.status === 'failed') {
           setInstallingSkill(null)
+          setSkillInstallProgress(null)
         }
       }),
       // Docker Token URL 事件
@@ -1571,6 +1580,30 @@ function App() {
         <h3 className="font-medium mb-3">
           {searchQuery ? '搜索结果' : '推荐技能'}
         </h3>
+        
+        {/* 安装进度条 */}
+        {skillInstallProgress && (
+          <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                正在安装: {skillInstallProgress.skill}
+              </span>
+              <span className="text-sm text-blue-600 dark:text-blue-400">
+                {skillInstallProgress.progress}%
+              </span>
+            </div>
+            <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2">
+              <div 
+                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${skillInstallProgress.progress}%` }}
+              ></div>
+            </div>
+            <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+              {skillInstallProgress.message}
+            </div>
+          </div>
+        )}
+        
         <div className="space-y-2 max-h-80 overflow-y-auto">
           {remoteSkills.map(skill => (
             <div key={skill.slug} className="p-3 border border-gray-200 dark:border-gray-600 rounded-lg">
@@ -2442,6 +2475,18 @@ function App() {
               </svg>
             </div>
             <span className="font-semibold">OpenClaw 本地版</span>
+            {localStorage.getItem('openclaw_license_code') && (
+              <span 
+                className="ml-2 px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-xs text-gray-600 dark:text-gray-400 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600"
+                onClick={() => {
+                  navigator.clipboard.writeText(localStorage.getItem('openclaw_license_code') || '')
+                  alert('授权码已复制到剪贴板')
+                }}
+                title="点击复制授权码"
+              >
+                📋 {localStorage.getItem('openclaw_license_code')}
+              </span>
+            )}
           </div>
           <button
             onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
