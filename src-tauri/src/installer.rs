@@ -2034,15 +2034,19 @@ providers:
                     let mut token_url = "http://localhost:18789".to_string();
                     
                     // 方式1: 运行 openclaw dashboard 命令获取 Token URL
-                    // 尝试多种命令格式
+                    // 尝试多种命令格式（包括 /usr/local/bin/openclaw 等路径）
                     let dashboard_commands = vec![
+                        "docker exec openclaw-yuanhuiwang /usr/local/bin/openclaw dashboard 2>&1",
+                        "docker exec openclaw-yuanhuiwang /usr/bin/openclaw dashboard 2>&1",
                         "docker exec openclaw-yuanhuiwang openclaw dashboard 2>&1",
+                        "docker exec openclaw-yuanhuiwang sh -c 'openclaw dashboard' 2>&1",
+                        "docker exec openclaw-yuanhuiwang bash -c 'openclaw dashboard' 2>&1",
                         "docker exec openclaw-yuanhuiwang node /app/openclaw.mjs dashboard 2>&1",
-                        "docker exec openclaw-yuanhuiwang node openclaw.mjs dashboard 2>&1",
+                        "docker exec openclaw-yuanhuiwang node /usr/src/app/openclaw.mjs dashboard 2>&1",
                     ];
                     
                     for cmd in &dashboard_commands {
-                        app.emit("model-progress", format!("尝试获取Token: {}", cmd)).ok();
+                        app.emit("model-progress", format!("尝试: {}", cmd)).ok();
                         
                         let dashboard_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
                             .args(&["-NoProfile", "-Command", cmd])
@@ -2051,30 +2055,27 @@ providers:
                         
                         if let Ok(output) = dashboard_result {
                             let stdout = String::from_utf8_lossy(&output.stdout);
-                            app.emit("model-progress", format!("dashboard输出:\n{}", stdout)).ok();
+                            let stderr = String::from_utf8_lossy(&output.stderr);
+                            app.emit("model-progress", format!("输出: {}", stdout)).ok();
+                            if !stderr.is_empty() {
+                                app.emit("model-progress", format!("错误: {}", stderr)).ok();
+                            }
                             
                             for line in stdout.lines() {
                                 let trimmed = line.trim();
-                                // 查找 http://localhost:18789/#token=xxx 格式的URL
-                                if trimmed.contains("http://localhost:18789") && trimmed.contains("token") {
+                                // 查找 http://localhost:18789/#token=xxx 或 ?token= 格式的URL
+                                if trimmed.contains("http://localhost:18789") || trimmed.contains("http://127.0.0.1:18789") {
                                     // 提取完整URL
-                                    if let Some(start) = trimmed.find("http://localhost") {
+                                    if let Some(start) = trimmed.find("http") {
                                         let url_part = &trimmed[start..];
-                                        // URL可能以空格或换行结束，找到结束位置
                                         let end = url_part.find(|c: char| c.is_whitespace()).unwrap_or(url_part.len());
                                         let url = &url_part[..end];
-                                        if url.starts_with("http") && url.contains("token") {
+                                        if url.contains("token") || url.contains("#") {
                                             token_url = url.to_string();
                                             app.emit("model-progress", format!("✅ 获取到Token URL: {}", token_url)).ok();
                                             break;
                                         }
                                     }
-                                }
-                                // 也查找以 http://localhost 开头的其他格式
-                                else if trimmed.starts_with("http://localhost") || trimmed.starts_with("http://127.0.0.1") {
-                                    token_url = trimmed.to_string();
-                                    app.emit("model-progress", format!("✅ 获取到链接: {}", token_url)).ok();
-                                    break;
                                 }
                             }
                             
@@ -2627,9 +2628,13 @@ pub async fn get_docker_token_url() -> Result<String, String> {
     
     // 尝试多种命令格式获取 Token URL
     let dashboard_commands = vec![
+        "docker exec openclaw-yuanhuiwang /usr/local/bin/openclaw dashboard 2>&1",
+        "docker exec openclaw-yuanhuiwang /usr/bin/openclaw dashboard 2>&1",
         "docker exec openclaw-yuanhuiwang openclaw dashboard 2>&1",
+        "docker exec openclaw-yuanhuiwang sh -c 'openclaw dashboard' 2>&1",
+        "docker exec openclaw-yuanhuiwang bash -c 'openclaw dashboard' 2>&1",
         "docker exec openclaw-yuanhuiwang node /app/openclaw.mjs dashboard 2>&1",
-        "docker exec openclaw-yuanhuiwang node openclaw.mjs dashboard 2>&1",
+        "docker exec openclaw-yuanhuiwang node /usr/src/app/openclaw.mjs dashboard 2>&1",
     ];
     
     for cmd in &dashboard_commands {
@@ -2642,20 +2647,16 @@ pub async fn get_docker_token_url() -> Result<String, String> {
             let stdout = String::from_utf8_lossy(&output.stdout);
             for line in stdout.lines() {
                 let trimmed = line.trim();
-                // 查找 http://localhost:18789/#token=xxx 格式的URL
-                if trimmed.contains("http://localhost:18789") && trimmed.contains("token") {
-                    if let Some(start) = trimmed.find("http://localhost") {
+                // 查找 http://localhost:18789/#token=xxx 或 ?token= 格式的URL
+                if trimmed.contains("http://localhost:18789") || trimmed.contains("http://127.0.0.1:18789") {
+                    if let Some(start) = trimmed.find("http") {
                         let url_part = &trimmed[start..];
                         let end = url_part.find(|c: char| c.is_whitespace()).unwrap_or(url_part.len());
                         let url = &url_part[..end];
-                        if url.starts_with("http") && url.contains("token") {
+                        if url.contains("token") || url.contains("#") {
                             return Ok(url.to_string());
                         }
                     }
-                }
-                // 也查找其他以 http://localhost 开头的格式
-                else if trimmed.starts_with("http://localhost") || trimmed.starts_with("http://127.0.0.1") {
-                    return Ok(trimmed.to_string());
                 }
             }
         }
