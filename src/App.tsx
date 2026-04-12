@@ -876,6 +876,13 @@ function App() {
           一键安装配置
         </div>
       </div>
+      
+      {/* 重要提示 */}
+      <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+        <p className="text-sm text-amber-700 dark:text-amber-300">
+          ⚠️ 本地模型需要自己训练，训练后才会得心应手，请根据实际需求购买授权使用，凡是购买即默认本地模型使用规则。
+        </p>
+      </div>
 
       <button
         onClick={() => setStep('license')}
@@ -1347,26 +1354,96 @@ function App() {
   // 渲染模型管理界面
   const renderModelManagement = () => (
     <div>
-      <h2 className="text-xl font-semibold mb-4">模型管理</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-semibold">模型管理</h2>
+        <button
+          onClick={() => setStep('launcher')}
+          className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
+        >
+          ← 返回启动器
+        </button>
+      </div>
       
       <div className="grid grid-cols-3 gap-4">
         <div className="col-span-2">
           <h3 className="font-medium mb-3">已安装模型</h3>
           <div className="space-y-2 max-h-80 overflow-y-auto">
-            {installedModels.map((model) => (
+            {installedModels.length === 0 ? (
+              <div className="p-4 text-center text-gray-500 dark:text-gray-400 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+                暂无已安装模型，请从下方推荐列表选择安装
+              </div>
+            ) : (
+              installedModels.map((model) => (
+                <div
+                  key={model.name}
+                  onClick={() => getModelDetails(model.name)}
+                  className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                    selectedInstalledModel === model.name
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-gray-200 dark:border-gray-600 hover:border-blue-300'
+                  }`}
+                >
+                  <div className="font-medium">{model.name}</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    {model.size} · {model.modified_at}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          
+          {/* 推荐模型 */}
+          <h3 className="font-medium mb-3 mt-6">推荐模型</h3>
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {[
+              { name: 'phi3.5', size: '2.2GB', desc: '微软轻量级模型，适合日常对话', recommended: true },
+              { name: 'qwen2.5:7b', size: '4.7GB', desc: '通义千问7B，中文能力强', recommended: true },
+              { name: 'llama3.2:3b', size: '2GB', desc: 'Meta Llama 3.2 3B，多语言支持', recommended: true },
+              { name: 'mistral:7b', size: '4.1GB', desc: 'Mistral 7B，性能优异', recommended: false },
+              { name: 'gemma2:9b', size: '5.5GB', desc: 'Google Gemma 2 9B', recommended: false },
+              { name: 'codellama:7b', size: '3.8GB', desc: '代码专用模型', recommended: false },
+              { name: 'deepseek-coder:6.7b', size: '3.8GB', desc: 'DeepSeek代码模型', recommended: false },
+              { name: 'yi:9b', size: '5.5GB', desc: '零一万物Yi模型', recommended: false },
+            ].map((model) => (
               <div
                 key={model.name}
-                onClick={() => getModelDetails(model.name)}
-                className={`p-3 rounded-lg border cursor-pointer transition-all ${
-                  selectedInstalledModel === model.name
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                    : 'border-gray-200 dark:border-gray-600 hover:border-blue-300'
-                }`}
+                className="p-3 rounded-lg border border-gray-200 dark:border-gray-600 hover:border-blue-300 flex items-center justify-between"
               >
-                <div className="font-medium">{model.name}</div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  {model.size} · {model.modified_at}
+                <div>
+                  <div className="font-medium flex items-center gap-2">
+                    {model.name}
+                    {model.recommended && (
+                      <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 px-2 py-0.5 rounded">推荐</span>
+                    )}
+                  </div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    {model.size} · {model.desc}
+                  </div>
                 </div>
+                <button
+                  onClick={async () => {
+                    if (installedModels.some(m => m.name === model.name || m.name.startsWith(model.name.split(':')[0]))) {
+                      alert(`${model.name} 已安装`)
+                      return
+                    }
+                    if (!confirm(`确定要安装 ${model.name} (${model.size})？`)) return
+                    
+                    setInstallLog([`开始下载 ${model.name}...`])
+                    try {
+                      await invoke('pull_model', { modelName: model.name })
+                      setInstallLog(prev => [...prev, `✅ ${model.name} 安装成功`])
+                      // 刷新已安装列表
+                      const models = await invoke<InstalledModel[]>('get_installed_models')
+                      setInstalledModels(models)
+                    } catch (err) {
+                      setInstallLog(prev => [...prev, `❌ 安装失败: ${err}`])
+                    }
+                  }}
+                  disabled={downloadStatus === 'downloading'}
+                  className="px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 disabled:opacity-50"
+                >
+                  {installedModels.some(m => m.name === model.name || m.name.startsWith(model.name.split(':')[0])) ? '已安装' : '安装'}
+                </button>
               </div>
             ))}
           </div>
@@ -1392,28 +1469,21 @@ function App() {
           )}
         </div>
       </div>
-      
-      <div className="mt-6 flex gap-3">
-        <button
-          onClick={() => setStep('select-model')}
-          className="px-6 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
-        >
-          返回
-        </button>
-        <button
-          onClick={() => setStep('skill-management')}
-          className="px-6 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:opacity-90"
-        >
-          技能管理
-        </button>
-      </div>
     </div>
   )
   
   // 渲染技能管理界面
   const renderSkillManagement = () => (
     <div>
-      <h2 className="text-xl font-semibold mb-4">技能管理</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-semibold">技能管理</h2>
+        <button
+          onClick={() => setStep('launcher')}
+          className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
+        >
+          ← 返回启动器
+        </button>
+      </div>
       
       {/* 更新提示 */}
       {skillUpdates.length > 0 && (
@@ -1561,7 +1631,12 @@ function App() {
                         console.log('Calling install_skill with slug:', skill.slug);
                         await invoke('install_skill', { slug: skill.slug });
                         console.log('install_skill completed');
+                        // 刷新已安装列表
                         await loadInstalledSkills();
+                        // 更新远程技能列表中的 installed 状态
+                        setRemoteSkills(prev => prev.map(s => 
+                          s.slug === skill.slug ? { ...s, installed: true } : s
+                        ));
                         setInstallingSkill(null);
                         alert(`技能 ${skill.name} 安装成功！`);
                       } catch (err) {
@@ -1584,12 +1659,6 @@ function App() {
       </div>
       
       <div className="mt-6 flex gap-3">
-        <button
-          onClick={() => setStep('model-management')}
-          className="px-6 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
-        >
-          返回
-        </button>
         <button
           onClick={() => {
             setRemoteSkills([])
