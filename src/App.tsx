@@ -1762,6 +1762,12 @@ function App() {
           技能管理
         </button>
         <button
+          onClick={() => setStep('training')}
+          className="px-3 py-1.5 text-sm border border-amber-300 dark:border-amber-600 text-amber-600 dark:text-amber-400 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/20"
+        >
+          🎯 训练
+        </button>
+        <button
           onClick={() => setStep('chat')}
           className="px-3 py-1.5 text-sm bg-primary-500 text-white rounded-lg hover:bg-primary-600 flex items-center gap-1"
           title="打开本地聊天界面"
