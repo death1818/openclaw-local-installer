@@ -228,6 +228,32 @@ function App() {
   useEffect(() => {
     const checkInstalled = async () => {
       try {
+        // 先清除旧的部署标记（如果容器没运行）
+        const dockerDeployed = localStorage.getItem('openclaw_docker_deployed') === 'true'
+        if (dockerDeployed) {
+          // 检测容器是否真的在运行
+          try {
+            interface DockerStatus {
+              container_running: boolean
+              gateway_ready: boolean
+              ollama_connected: boolean
+              logs: string | null
+              error: string | null
+            }
+            const status = await invoke<DockerStatus>('check_docker_container_status')
+            if (!status.container_running) {
+              console.log('容器未运行，清除旧的部署标记')
+              localStorage.removeItem('openclaw_docker_deployed')
+            } else {
+              console.log('检测到 Docker 容器正在运行')
+              setDockerMode(true)
+            }
+          } catch (e) {
+            console.log('检测容器状态失败，清除部署标记:', e)
+            localStorage.removeItem('openclaw_docker_deployed')
+          }
+        }
+        
         const openclawInstalled = await invoke<boolean>('check_openclaw_installed')
         const licensed = localStorage.getItem('openclaw_licensed') === 'true'
         const installCompleted = localStorage.getItem('openclaw_install_completed') === 'true'
@@ -240,17 +266,13 @@ function App() {
           configExists = false
         }
         
-        // 检查 Docker 部署状态
-        const dockerDeployed = localStorage.getItem('openclaw_docker_deployed') === 'true'
-        if (dockerDeployed) {
-          setDockerMode(true)
-          console.log('检测到 Docker 部署模式')
-        }
+        // 重新获取 Docker 部署状态（可能已被清除）
+        const dockerDeployedNow = localStorage.getItem('openclaw_docker_deployed') === 'true'
         
-        console.log('检测状态:', { openclawInstalled, licensed, installCompleted, configExists, dockerDeployed })
+        console.log('检测状态:', { openclawInstalled, licensed, installCompleted, configExists, dockerDeployedNow })
         
         // Docker 部署模式直接进入启动器
-        if (dockerDeployed) {
+        if (dockerDeployedNow) {
           console.log('Docker 部署模式，进入启动器')
           setStep('launcher')
           return
