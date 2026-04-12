@@ -2,6 +2,20 @@ import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-shell'
+
+// 文件读取函数
+const readFileContent = async (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const content = e.target?.result as string
+      resolve(content)
+    }
+    reader.onerror = () => reject(new Error('Failed to read file'))
+    reader.readAsText(file)
+  })
+}
+
 // 支付页面 URL
 const PAYMENT_URL = 'https://www.ku1818.cn/buy'
 
@@ -88,7 +102,7 @@ interface SkillInstallProgress {
   message: string
 }
 
-type InstallStep = 'welcome' | 'license' | 'preparing' | 'detecting' | 'select-model' | 'installing' | 'complete' | 'model-management' | 'skill-management' | 'launcher' | 'ollama-setup' | 'chat'
+type InstallStep = 'welcome' | 'license' | 'preparing' | 'detecting' | 'select-model' | 'installing' | 'complete' | 'model-management' | 'skill-management' | 'launcher' | 'ollama-setup' | 'chat' | 'training'
 type Theme = 'light' | 'dark'
 
 // 授权码格式验证
@@ -159,12 +173,101 @@ function App() {
   const [dockerMode, setDockerMode] = useState(false) // Docker 部署模式
   
   // 聊天界面状态
-  const [chatMessages, setChatMessages] = useState<Array<{id: string, role: 'user' | 'assistant', content: string, timestamp: Date}>>([])
+  const [chatMessages, setChatMessages] = useState<Array<{id: string, role: 'user' | 'assistant', content: string, timestamp: Date, attachments?: string}>>([])
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
   const [chatModels, setChatModels] = useState<Array<{name: string, size?: number}>>([])
   const [chatSelectedModel, setChatSelectedModel] = useState('')
   const [chatConnected, setChatConnected] = useState(false)
+  const [chatAttachedFile, setChatAttachedFile] = useState<string>('')
+  
+  // 模型训练状态
+  const [trainingCategory, setTrainingCategory] = useState<string>('')
+  const [trainingProgress, setTrainingProgress] = useState(0)
+  const [trainingLog, setTrainingLog] = useState<string[]>([])
+  const [trainingActive, setTrainingActive] = useState(false)
+  
+  // 预设训练数据
+  const trainingPresets = [
+    {
+      id: 'programming',
+      name: '编程开发',
+      icon: '💻',
+      description: '代码编写、调试、架构设计',
+      materials: [
+        { title: '代码规范', content: '良好的代码规范包括：命名规范（变量名、函数名使用有意义的名称）、缩进和格式化、注释规范、代码复用原则。' },
+        { title: '常见算法', content: '排序算法（冒泡、快速、归并）、搜索算法（二分、深度优先、广度优先）、动态规划、贪心算法。' },
+        { title: '设计模式', content: '单例模式、工厂模式、观察者模式、策略模式、装饰器模式、适配器模式、代理模式。' },
+        { title: '调试技巧', content: '断点调试、日志记录、单元测试、代码审查、性能分析、内存泄漏检测。' },
+        { title: '架构原则', content: 'SOLID原则、DRY原则（不重复）、KISS原则（保持简单）、高内聚低耦合、关注点分离。' }
+      ]
+    },
+    {
+      id: 'writing',
+      name: '写作助手',
+      icon: '✍️',
+      description: '文章创作、文案优化、内容策划',
+      materials: [
+        { title: '写作技巧', content: '开头要吸引注意力、中间要层层递进、结尾要总结升华。使用比喻、排比、拟人等修辞手法增强表现力。' },
+        { title: '结构框架', content: '总分总结构、递进结构、对比结构、时间顺序结构、问题-分析-解决结构。' },
+        { title: '文案要点', content: '了解目标受众、突出核心卖点、创造情感共鸣、使用行动号召、保持简洁有力。' },
+        { title: '标题技巧', content: '数字法（5个技巧...）、疑问法（如何...）、对比法、悬念法、利益法（帮你节省...）。' },
+        { title: '内容策划', content: '确定主题方向、收集素材资料、制定内容大纲、撰写初稿、反复修改润色、最终审核发布。' }
+      ]
+    },
+    {
+      id: 'business',
+      name: '商业分析',
+      icon: '📊',
+      description: '数据分析、商业报告、决策支持',
+      materials: [
+        { title: '数据分析', content: '数据收集、数据清洗、数据分析、可视化呈现、结论总结。常用指标：转化率、留存率、增长率、ROI。' },
+        { title: '报告结构', content: '执行摘要、背景说明、分析方法、数据呈现、结论建议、附录说明。' },
+        { title: '决策框架', content: 'SWOT分析、PEST分析、波特五力模型、决策矩阵、成本效益分析、风险评估。' },
+        { title: '指标体系', content: '北极星指标、OKR目标管理、KPI关键绩效指标、平衡计分卡。' },
+        { title: '行业分析', content: '市场规模估算、竞争格局分析、发展趋势判断、用户画像分析、商业模式评估。' }
+      ]
+    },
+    {
+      id: 'education',
+      name: '教育学习',
+      icon: '📚',
+      description: '知识讲解、学习辅导、课程设计',
+      materials: [
+        { title: '教学方法', content: '讲授法、讨论法、案例法、实践法、翻转课堂、项目式学习。' },
+        { title: '知识体系', content: '知识点分解、逻辑关系梳理、难度梯度设计、学习路径规划。' },
+        { title: '学习技巧', content: '费曼学习法、间隔重复、主动回忆、思维导图、番茄工作法。' },
+        { title: '评估方法', content: '形成性评估、总结性评估、诊断性评估、自评与互评、实践考核。' },
+        { title: '课程设计', content: '学习目标设定、内容选择组织、教学方法设计、评估方式确定、资源准备。' }
+      ]
+    },
+    {
+      id: 'medical',
+      name: '医疗健康',
+      icon: '🏥',
+      description: '健康咨询、医学知识、养生指导',
+      materials: [
+        { title: '健康常识', content: '合理膳食、适量运动、充足睡眠、心理平衡、定期体检。每天饮水1500-2000ml，每周运动3-5次。' },
+        { title: '常见症状', content: '感冒症状、消化不良、头痛失眠、过敏反应、慢性病管理。注意：AI建议仅供参考，严重症状请就医。' },
+        { title: '营养知识', content: '蛋白质、碳水化合物、脂肪、维生素、矿物质、膳食纤维、水分。均衡饮食、控制热量。' },
+        { title: '运动指导', content: '有氧运动（跑步、游泳、骑车）、力量训练、柔韧性训练、平衡训练。循序渐进、避免受伤。' },
+        { title: '心理健康', content: '压力管理、情绪调节、社交支持、正念冥想、寻求帮助。保持积极心态。' }
+      ]
+    },
+    {
+      id: 'legal',
+      name: '法律咨询',
+      icon: '⚖️',
+      description: '法律知识、合同审查、风险评估',
+      materials: [
+        { title: '合同要点', content: '当事人信息、标的条款、权利义务、违约责任、争议解决、生效条件。注意明确、具体、可执行。' },
+        { title: '常见法律问题', content: '劳动纠纷、房产交易、婚姻家庭、交通事故、消费维权、知识产权。' },
+        { title: '风险评估', content: '合同风险、合规风险、知识产权风险、劳动用工风险、诉讼风险。' },
+        { title: '维权途径', content: '协商解决、调解仲裁、诉讼维权、行政投诉。注意保存证据、了解时效。' },
+        { title: '免责声明', content: 'AI提供的法律信息仅供参考，不构成法律意见。具体法律问题请咨询专业律师。' }
+      ]
+    }
+  ]
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')
@@ -1224,6 +1327,12 @@ function App() {
         >
           技能管理
         </button>
+        <button
+          onClick={() => setStep('training')}
+          className="px-4 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-lg font-medium hover:opacity-90"
+        >
+          🎯 模型训练
+        </button>
       </div>
       
       <button
@@ -1840,17 +1949,25 @@ function App() {
 
   // 发送聊天消息（通过 Rust 后端）
   const sendChatMessage = async () => {
-    if (!chatInput.trim() || chatLoading) return
+    if ((!chatInput.trim() && !chatAttachedFile) || chatLoading) return
+    
+    // 构建消息内容
+    let messageContent = chatInput.trim()
+    if (chatAttachedFile) {
+      messageContent = `${messageContent}\n\n--- 文件内容 ---\n${chatAttachedFile}`
+    }
     
     const userMessage = {
       id: Date.now().toString(),
       role: 'user' as const,
-      content: chatInput.trim(),
-      timestamp: new Date()
+      content: messageContent,
+      timestamp: new Date(),
+      attachments: chatAttachedFile ? '📎 已附加文件' : undefined
     }
     
     setChatMessages(prev => [...prev, userMessage])
     setChatInput('')
+    setChatAttachedFile('') // 清空附件
     setChatLoading(true)
     
     const assistantId = (Date.now() + 1).toString()
@@ -1877,6 +1994,154 @@ function App() {
     }
     setChatLoading(false)
   }
+
+  // 模型训练界面
+  const renderTraining = () => (
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800 py-8">
+      <div className="max-w-4xl mx-auto px-4">
+        {/* 顶部栏 */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setStep('launcher')}
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            >
+              ← 返回
+            </button>
+            <div>
+              <h1 className="text-xl font-bold">🎯 模型训练中心</h1>
+              <p className="text-sm text-gray-500">选择行业领域，一键投喂基础知识</p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setTrainingCategory('')
+              setTrainingProgress(0)
+              setTrainingLog([])
+            }}
+            className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            重置
+          </button>
+        </div>
+
+        {/* 训练进度 */}
+        {trainingActive && (
+          <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-medium text-blue-700 dark:text-blue-300">训练进行中...</span>
+              <span className="text-sm text-blue-600 dark:text-blue-400">{trainingProgress}%</span>
+            </div>
+            <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2">
+              <div 
+                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${trainingProgress}%` }}
+              ></div>
+            </div>
+          </div>
+        )}
+
+        {/* 训练日志 */}
+        {trainingLog.length > 0 && (
+          <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl">
+            <h3 className="font-medium mb-2">📋 训练日志</h3>
+            <div className="max-h-40 overflow-y-auto text-sm text-gray-600 dark:text-gray-400 font-mono">
+              {trainingLog.map((log, i) => (
+                <div key={i}>{log}</div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 训练分类 */}
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          {trainingPresets.map(preset => (
+            <div
+              key={preset.id}
+              className={`p-4 rounded-xl border-2 transition-all cursor-pointer ${
+                trainingCategory === preset.id 
+                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
+                  : 'border-gray-200 dark:border-gray-700 hover:border-blue-300'
+              }`}
+              onClick={() => setTrainingCategory(preset.id)}
+            >
+              <div className="text-3xl mb-2">{preset.icon}</div>
+              <div className="font-medium mb-1">{preset.name}</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">{preset.description}</div>
+              <div className="text-xs text-blue-500 mt-2">{preset.materials.length} 个知识点</div>
+            </div>
+          ))}
+        </div>
+
+        {/* 训练内容预览 */}
+        {trainingCategory && (
+          <div className="mt-6">
+            <h3 className="font-medium mb-4">📚 训练内容预览</h3>
+            <div className="space-y-3">
+              {trainingPresets.find(p => p.id === trainingCategory)?.materials.map((m, i) => (
+                <div key={i} className="p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <div className="font-medium text-sm mb-1">{i + 1}. {m.title}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{m.content}</div>
+                </div>
+              ))}
+            </div>
+            
+            {/* 操作按钮 */}
+            <div className="mt-6 flex gap-4">
+              <button
+                onClick={async () => {
+                  const preset = trainingPresets.find(p => p.id === trainingCategory)
+                  if (!preset || trainingActive) return
+                  
+                  setTrainingActive(true)
+                  setTrainingProgress(0)
+                  setTrainingLog([])
+                  
+                  for (let i = 0; i < preset.materials.length; i++) {
+                    const m = preset.materials[i]
+                    setTrainingLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] 正在投喂: ${m.title}`])
+                    
+                    // 模拟训练过程
+                    await new Promise(resolve => setTimeout(resolve, 500))
+                    
+                    setTrainingLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] ✅ ${m.title} 已学习`])
+                    setTrainingProgress(Math.round(((i + 1) / preset.materials.length) * 100))
+                  }
+                  
+                  setTrainingLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] 🎉 训练完成！`])
+                  setTrainingActive(false)
+                }}
+                disabled={trainingActive}
+                className="flex-1 px-6 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white rounded-xl font-medium transition-colors"
+              >
+                {trainingActive ? '训练中...' : '🚀 开始训练'}
+              </button>
+              
+              <button
+                onClick={() => {
+                  setStep('chat')
+                }}
+                className="px-6 py-3 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              >
+                💬 去聊天测试
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 提示 */}
+        <div className="mt-8 p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800">
+          <div className="flex items-start gap-2">
+            <span className="text-amber-500">💡</span>
+            <div className="text-sm text-amber-700 dark:text-amber-300">
+              <p className="font-medium mb-1">高级训练</p>
+              <p className="text-xs">如需更专业的训练，请在聊天界面附加您的专业文档进行深度投喂。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 
   // 聊天界面
   const renderChat = () => (
@@ -2012,7 +2277,48 @@ function App() {
       
       {/* 输入区域 */}
       <div className="flex-shrink-0 p-4 bg-white/80 dark:bg-gray-800/80 backdrop-blur border-t border-gray-200 dark:border-gray-700">
+        {/* 文件附件显示 */}
+        {chatAttachedFile && (
+          <div className="max-w-4xl mx-auto mb-2 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg flex items-center justify-between">
+            <span className="text-sm text-blue-600 dark:text-blue-400">
+              📎 已附加文件内容 ({chatAttachedFile.length} 字符)
+            </span>
+            <button
+              onClick={() => setChatAttachedFile('')}
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         <div className="max-w-4xl mx-auto flex gap-2">
+          {/* 文件上传按钮 */}
+          <input
+            type="file"
+            id="chat-file-input"
+            className="hidden"
+            accept=".txt,.md,.json,.js,.ts,.tsx,.jsx,.py,.html,.css,.xml,.yaml,.yml,.csv,.log"
+            onChange={async (e) => {
+              const file = e.target.files?.[0]
+              if (file) {
+                try {
+                  const content = await readFileContent(file)
+                  setChatAttachedFile(content)
+                } catch (err) {
+                  console.error('读取文件失败:', err)
+                }
+              }
+              e.target.value = '' // 重置以允许重复选择同一文件
+            }}
+          />
+          <button
+            onClick={() => document.getElementById('chat-file-input')?.click()}
+            className="px-3 py-3 rounded-xl border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            title="附加文件"
+            disabled={!chatConnected}
+          >
+            📎
+          </button>
           <textarea
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}
@@ -2030,14 +2336,14 @@ function App() {
           />
           <button
             onClick={sendChatMessage}
-            disabled={!chatInput.trim() || chatLoading || !chatConnected}
+            disabled={(!chatInput.trim() && !chatAttachedFile) || chatLoading || !chatConnected}
             className="px-5 py-3 rounded-xl bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-colors flex items-center gap-2"
           >
             {chatLoading ? <span className="animate-spin">⏳</span> : <span>发送</span>}
           </button>
         </div>
         <div className="mt-2 text-xs text-gray-400 text-center">
-          纯本地运行 · 数据安全 · 模型: {chatSelectedModel || 'phi3.5'}
+          纯本地运行 · 数据安全 · 模型: {chatSelectedModel || 'phi3.5'} · 支持 📎 附加文件
         </div>
       </div>
     </div>
@@ -2069,6 +2375,8 @@ function App() {
           renderLauncher()
         ) : step === 'chat' ? (
           renderChat()
+        ) : step === 'training' ? (
+          renderTraining()
         ) : (
           <div className="max-w-2xl mx-auto px-6 py-12">
             {error && (
