@@ -30,6 +30,7 @@ use installer::{
     get_gateway_models,
     send_chat_message,
     get_gateway_url,
+    get_docker_token_url,
 };
 use models::{
     list_models,
@@ -98,6 +99,7 @@ fn main() {
             get_gateway_models,
             send_chat_message,
             get_gateway_url,
+            get_docker_token_url,
         ])
         .setup(move |app| {
             // 如果是启动模式，延迟发送事件给前端（确保前端已准备好）

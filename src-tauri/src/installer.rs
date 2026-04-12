@@ -2033,27 +2033,66 @@ providers:
                     
                     let mut token_url = "http://localhost:18789".to_string();
                     
-                    // 方式1: 尝试从容器日志获取
-                    let log_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                        .args(&["-NoProfile", "-Command", "docker logs openclaw-yuanhuiwang 2>&1 | Select-String -Pattern 'http.*token' | Select-Object -Last 1"])
+                    // 方式1: 运行 openclaw dashboard 命令获取 Token URL
+                    app.emit("model-progress", "尝试通过 openclaw dashboard 获取 Token...".to_string()).ok();
+                    let dashboard_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                        .args(&["-NoProfile", "-Command", "docker exec openclaw-yuanhuiwang node openclaw.mjs dashboard 2>&1"])
                         .creation_flags(CREATE_NO_WINDOW)
                         .output();
                     
-                    if let Ok(output) = log_result {
+                    if let Ok(output) = dashboard_result {
                         let stdout = String::from_utf8_lossy(&output.stdout);
                         for line in stdout.lines() {
-                            if line.contains("http") && line.contains("token") {
+                            // 查找包含 token 的 URL
+                            if line.contains("http") && (line.contains("token") || line.contains("localhost:18789")) {
                                 // 提取 URL
                                 let url = line.trim();
                                 if url.starts_with("http") {
                                     token_url = url.to_string();
+                                    app.emit("model-progress", format!("✅ 从 dashboard 获取到链接: {}", token_url)).ok();
                                     break;
                                 }
                             }
                         }
                     }
                     
-                    // 方式2: 如果方式1失败，尝试从容器内获取
+                    // 方式2: 尝试从容器日志获取
+                    if token_url == "http://localhost:18789" {
+                        let log_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                            .args(&["-NoProfile", "-Command", "docker logs openclaw-yuanhuiwang 2>&1 | Select-String -Pattern 'http.*token' | Select-Object -Last 1"])
+                            .creation_flags(CREATE_NO_WINDOW)
+                            .output();
+                        
+                        if let Ok(output) = log_result {
+                            let stdout = String::from_utf8_lossy(&output.stdout);
+                            for line in stdout.lines() {
+                                if line.contains("http") && line.contains("token") {
+                                    let url = line.trim();
+                                    if url.starts_with("http") {
+                                        token_url = url.to_string();
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 方式3: 从容器内读取 token 文件
+                    if token_url == "http://localhost:18789" {
+                        let exec_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                            .args(&["-NoProfile", "-Command", "docker exec openclaw-yuanhuiwang cat /root/.openclaw/token.txt 2>$null"])
+                            .creation_flags(CREATE_NO_WINDOW)
+                            .output();
+                        
+                        if let Ok(output) = exec_result {
+                            let stdout = String::from_utf8_lossy(&output.stdout);
+                            if !stdout.trim().is_empty() {
+                                token_url = format!("http://localhost:18789/#token={}", stdout.trim());
+                            }
+                        }
+                    }
+                    
+                    // 方式4: 尝试其他路径
                     if token_url == "http://localhost:18789" {
                         let exec_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
                             .args(&["-NoProfile", "-Command", "docker exec openclaw-yuanhuiwang cat /home/node/.openclaw/token.txt 2>$null"])
@@ -2069,7 +2108,7 @@ providers:
                     }
                     
                     // 发送 token URL 给前端
-                    app.emit("model-progress", format!("✅ 获取到访问链接: {}", token_url)).ok();
+                    app.emit("model-progress", format!("✅ 访问链接: {}", token_url)).ok();
                     app.emit("docker-token-url", &token_url).ok();
 
                     // 关键修复：验证 Gateway 服务是否真正可用
@@ -2192,10 +2231,27 @@ pub async fn check_gateway_status() -> Result<bool, String> {
         .build()
         .map_err(|e| e.to_string())?;
     
-    match client.get("http://localhost:18789/api/health").send().await {
-        Ok(res) if res.status().is_success() => Ok(true),
-        _ => Ok(false),
+    // 尝试多个健康检查端点
+    let endpoints = vec![
+        "http://localhost:18789/healthz",
+        "http://localhost:18789/health",
+        "http://localhost:18789/",
+        "http://localhost:18789/api/models",
+    ];
+    
+    for endpoint in endpoints {
+        match client.get(endpoint).timeout(std::time::Duration::from_secs(3)).send().await {
+            Ok(res) => {
+                // 任何响应都说明 Gateway 正在运行
+                if res.status().is_success() || res.status().as_u16() == 404 || res.status().as_u16() == 401 {
+                    return Ok(true);
+                }
+            }
+            Err(_) => continue,
+        }
     }
+    
+    Ok(false)
 }
 
 /// Docker 容器综合状态检测
@@ -2441,4 +2497,76 @@ pub async fn get_gateway_url() -> Result<String, String> {
     // 读取 Token
     let token = get_or_create_gateway_token();
     Ok(format!("{}?token={}", base_url, token))
+}
+
+/// 从 Docker 容器获取 Token URL（通过 openclaw dashboard 命令）
+#[tauri::command]
+#[cfg(target_os = "windows")]
+pub async fn get_docker_token_url() -> Result<String, String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    
+    let mut token_url = "http://localhost:18789".to_string();
+    
+    // 方式1: 运行 openclaw dashboard 命令获取
+    let dashboard_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+        .args(&["-NoProfile", "-Command", "docker exec openclaw-yuanhuiwang node openclaw.mjs dashboard 2>&1"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+    
+    if let Ok(output) = dashboard_result {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines() {
+            if line.contains("http") && (line.contains("token") || line.contains("localhost:18789")) {
+                let url = line.trim();
+                if url.starts_with("http") {
+                    token_url = url.to_string();
+                    return Ok(token_url);
+                }
+            }
+        }
+    }
+    
+    // 方式2: 从容器日志获取
+    let log_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+        .args(&["-NoProfile", "-Command", "docker logs openclaw-yuanhuiwang 2>&1 | Select-String -Pattern 'http.*token' | Select-Object -Last 1"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+    
+    if let Ok(output) = log_result {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines() {
+            if line.contains("http") && line.contains("token") {
+                let url = line.trim();
+                if url.starts_with("http") {
+                    return Ok(url.to_string());
+                }
+            }
+        }
+    }
+    
+    // 方式3: 从容器内读取 token 文件
+    let paths = vec!["/root/.openclaw/token.txt", "/home/node/.openclaw/token.txt"];
+    for path in paths {
+        let exec_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-NoProfile", "-Command", &format!("docker exec openclaw-yuanhuiwang cat {} 2>$null", path)])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        
+        if let Ok(output) = exec_result {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if !stdout.trim().is_empty() {
+                return Ok(format!("http://localhost:18789/#token={}", stdout.trim()));
+            }
+        }
+    }
+    
+    // 返回默认 URL
+    Ok(token_url)
+}
+
+#[tauri::command]
+#[cfg(not(target_os = "windows"))]
+pub async fn get_docker_token_url() -> Result<String, String> {
+    Ok("http://localhost:18789".to_string())
 }

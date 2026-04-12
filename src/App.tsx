@@ -1623,10 +1623,20 @@ function App() {
             ✅ 打开 Gateway (已获取令牌)
           </a>
         ) : (
-          <span className="text-sm text-gray-400 flex items-center gap-1">
-            ⏳ 等待获取令牌...
-          </span>
-        )}
+          <button
+            onClick={async () => {
+              try {
+                const tokenUrl = await invoke<string>('get_docker_token_url')
+                setDockerTokenUrl(tokenUrl)
+              } catch (e) {
+                setError('获取令牌失败: ' + String(e))
+              }
+            }}
+            className="text-sm text-blue-500 hover:text-blue-600 flex items-center gap-1"
+          >
+            🔑 获取令牌
+          </button>
+        )}}
         
         <div className="flex-1" />
         
