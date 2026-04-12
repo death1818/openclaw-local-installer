@@ -1645,24 +1645,93 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         
-        // 步骤1: 检查 Docker - 使用 PowerShell
-        app.emit("model-progress", "[1/6] 检查 Docker...".to_string()).ok();
-        let docker_check = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", "docker version"])
+        // 步骤1: 检查 Docker Desktop 是否运行
+        app.emit("model-progress", "[1/6] 检查 Docker Desktop...".to_string()).ok();
+        
+        // 先检查 Docker daemon 是否响应
+        let daemon_check = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-NoProfile", "-Command", "docker info 2>&1"])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         
-        match docker_check {
+        let daemon_running = match daemon_check {
             Ok(output) => {
-                if !output.status.success() {
-                    let err = String::from_utf8_lossy(&output.stderr);
-                    return Err("错误: 检测到 Docker Desktop Linux 版，请在 Windows 上安装 Docker Desktop Windows 版。\n\n请卸载当前版本，然后下载：\nhttps://shiping.ku1818.com.cn/openclaw/Docker%20Desktop%20Installer.exe".to_string());
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                
+                // 检查是否有 daemon not running 错误
+                if stdout.contains("daemon is not running") || stderr.contains("daemon is not running") ||
+                   stdout.contains("Cannot connect to the Docker daemon") || stderr.contains("Cannot connect to the Docker daemon") {
+                    false
+                } else if output.status.success() && stdout.contains("Server Version") {
+                    true
+                } else {
+                    false
                 }
-                app.emit("model-progress", "✅ Docker 已安装并运行".to_string()).ok();
             }
-            Err(e) => {
-                return Err(format!("Docker 未安装或未运行: {}", e));
+            Err(_) => false,
+        };
+        
+        if !daemon_running {
+            // Docker daemon 未运行，尝试启动 Docker Desktop
+            app.emit("model-progress", "⚠️ Docker Desktop 未运行，正在尝试启动...".to_string()).ok();
+            
+            // 尝试启动 Docker Desktop
+            let start_docker = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                .args(&["-NoProfile", "-Command", "Start-Process 'C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe'"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
+            
+            match start_docker {
+                Ok(_) => {
+                    app.emit("model-progress", "⏳ 已启动 Docker Desktop，等待就绪（约30秒）...".to_string()).ok();
+                    
+                    // 等待 Docker 就绪
+                    let mut docker_ready = false;
+                    for i in 1..=60 {
+                        std::thread::sleep(std::time::Duration::from_secs(1));
+                        
+                        let check = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                            .args(&["-NoProfile", "-Command", "docker info 2>$null"])
+                            .creation_flags(CREATE_NO_WINDOW)
+                            .output();
+                        
+                        if let Ok(output) = check {
+                            let stdout = String::from_utf8_lossy(&output.stdout);
+                            if output.status.success() && stdout.contains("Server Version") {
+                                docker_ready = true;
+                                app.emit("model-progress", format!("✅ Docker Desktop 已就绪 ({}秒)", i)).ok();
+                                break;
+                            }
+                        }
+                        
+                        if i % 10 == 0 {
+                            app.emit("model-progress", format!("等待中... {}秒", i)).ok();
+                        }
+                    }
+                    
+                    if !docker_ready {
+                        return Err(
+                            "Docker Desktop 启动超时！\n\n\
+                            请手动操作：\n\
+                            1. 打开 Docker Desktop 应用\n\
+                            2. 等待状态变为 'Running'\n\
+                            3. 重新运行安装器".to_string()
+                        );
+                    }
+                }
+                Err(e) => {
+                    return Err(
+                        format!("无法启动 Docker Desktop: {}\n\n\
+                        请手动操作：\n\
+                        1. 打开 Docker Desktop 应用\n\
+                        2. 等待状态变为 'Running'\n\
+                        3. 重新运行安装器", e)
+                    );
+                }
             }
+        } else {
+            app.emit("model-progress", "✅ Docker Desktop 已运行".to_string()).ok();
         }
         
         // 步骤2: 配置 Docker 镜像加速器（解决国内网络问题）
@@ -1687,64 +1756,77 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         app.emit("model-progress", "[3/6] 检查镜像...".to_string()).ok();
         
         // 使用 Docker Hub 公开镜像
-        let image_name = "chenlong999988/openclaw:latest";
+        // 尝试多个镜像源（优先官方完整镜像）
+        let image_sources = vec![
+            ("官方完整镜像", "ghcr.io/openclaw/openclaw:latest"),
+            ("自托管镜像", "ghcr.io/death1818/openclaw:latest"),
+            ("Docker Hub镜像", "chenlong999988/openclaw:latest"),
+        ];
+        
+        let mut image_name = "";
+        let mut pull_success = false;
         
         // 先检查镜像是否已存在
-        let check_image = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", &format!("docker images {} -q", image_name)])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output();
-        
-        let image_exists = match check_image {
-            Ok(output) => {
-                let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                !result.is_empty()
-            }
-            Err(_) => false,
-        };
-        
-        if image_exists {
-            app.emit("model-progress", "✅ 镜像已存在，跳过拉取".to_string()).ok();
-        } else {
-            app.emit("model-progress", "[3/6] 拉取镜像（可能需要几分钟）...".to_string()).ok();
-            
-            let pull_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                .args(&["-NoProfile", "-Command", "docker pull chenlong999988/openclaw:latest 2>&1"])
+        // 检查是否有任何可用镜像
+        let mut image_exists = false;
+        for (_, img) in &image_sources {
+            let check = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                .args(&["-NoProfile", "-Command", &format!("docker images -q {} 2>$null", img)])
                 .creation_flags(CREATE_NO_WINDOW)
                 .output();
             
-            // 检查拉取是否成功
-            let pull_success = match pull_result {
-                Ok(output) => {
-                    let stdout = String::from_utf8_lossy(&output.stdout);
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    if stdout.contains("Error") || stdout.contains("denied") || stdout.contains("unauthorized") {
-                        app.emit("model-progress", format!("⚠️ 镜像拉取失败: {}", stdout.lines().next().unwrap_or("未知错误")).to_string()).ok();
-                        false
-                    } else if !stderr.is_empty() && (stderr.contains("Error") || stderr.contains("denied")) {
-                        app.emit("model-progress", format!("⚠️ 镜像拉取失败: {}", stderr.lines().next().unwrap_or("未知错误")).to_string()).ok();
-                        false
-                    } else {
-                        app.emit("model-progress", "✅ 镜像拉取完成".to_string()).ok();
-                        true
+            if let Ok(output) = check {
+                let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !result.is_empty() {
+                    image_exists = true;
+                    image_name = img;
+                    app.emit("model-progress", format!("✅ 找到已存在镜像: {}", img)).ok();
+                    break;
+                }
+            }
+        }
+        
+        if image_exists {
+            app.emit("model-progress", "✅ 镜像已存在，跳过拉取".to_string()).ok();
+            pull_success = true;
+        } else {
+            // 尝试多个镜像源
+            for (name, img) in &image_sources {
+                app.emit("model-progress", format!("[3/6] 尝试拉取 {} ({})...", name, img)).ok();
+                
+                let pull_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                    .args(&["-NoProfile", "-Command", &format!("docker pull {} 2>&1", img)])
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .output();
+                
+                match pull_result {
+                    Ok(output) => {
+                        let stdout = String::from_utf8_lossy(&output.stdout);
+                        if !stdout.contains("Error") && !stdout.contains("denied") && !stdout.contains("unauthorized") {
+                            image_name = img;
+                            pull_success = true;
+                            app.emit("model-progress", format!("✅ {} 拉取成功", name)).ok();
+                            break;
+                        } else {
+                            app.emit("model-progress", format!("⚠️ {} 拉取失败，尝试下一个...", name)).ok();
+                        }
+                    }
+                    Err(e) => {
+                        app.emit("model-progress", format!("⚠️ {} 拉取出错: {}", name, e)).ok();
                     }
                 }
-                Err(e) => {
-                    app.emit("model-progress", format!("⚠️ 镜像拉取出错: {}", e)).ok();
-                    false
-                }
-            };
-            
-            if !pull_success {
-                return Err(
-                    "Docker 镜像拉取失败！\n\
-                    可能原因：\n1. 需要登录 GitHub Container Registry\n2. 镜像不存在或为私有仓库\n\
-                    解决方案：\n\
-                    方案A - 登录 ghcr.io:\n  docker login ghcr.io -u YOUR_GITHUB_USERNAME -p YOUR_GITHUB_TOKEN\n\
-                    方案B - 使用 npm 方式运行：\n  npm install -g openclaw\n  openclaw gateway start\n\
-                    方案C - 本地构建镜像：\n  git clone https://github.com/openclaw/openclaw.git\n  cd openclaw && docker build -t openclaw:local .".to_string()
-                );
             }
+        }
+        
+        if !pull_success {
+            return Err(
+                "所有镜像源拉取失败！\n\n\
+                请确保 Docker Desktop 已启动，然后重试。\n\n\
+                解决方案：\n\
+                1. 启动 Docker Desktop 并等待状态变为 Running\n\
+                2. 检查网络连接\n\
+                3. 或使用 npm 方式运行：npm install -g openclaw && openclaw gateway start".to_string()
+            );
         }
         
         // 步骤4: 检查并安装 Ollama（宿主机本地模型需要）
@@ -1884,9 +1966,14 @@ providers:
             }
         }
         
-        // 启动新容器
+        // 启动新容器（使用已确定的有效镜像）
+        let run_cmd = format!(
+            "docker run -d --name openclaw-yuanhuiwang -p 18789:18789 -v \"$env:USERPROFILE\\.openclaw:/root/.openclaw\" -e OLLAMA_HOST=http://host.docker.internal:11434 -e OLLAMA_MODEL_DIR=/root/.ollama/models -e OPENCLAW_AUTH_NONE=true --add-host=host.docker.internal:host-gateway {}",
+            image_name
+        );
+        
         let run_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", "docker run -d --name openclaw-yuanhuiwang -p 18789:18789 -v \"$env:USERPROFILE\\.openclaw:/root/.openclaw\" -e OLLAMA_HOST=http://host.docker.internal:11434 -e OLLAMA_MODEL_DIR=/root/.ollama/models -e OPENCLAW_AUTH_NONE=true --add-host=host.docker.internal:host-gateway chenlong999988/openclaw:latest"])
+            .args(&["-NoProfile", "-Command", &run_cmd])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         
