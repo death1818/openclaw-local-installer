@@ -704,6 +704,14 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
     
     app.emit("model-progress", "正在下载模型...".to_string()).ok();
     
+    // 发送进度条开始事件
+    app.emit("model-download-progress", crate::download::DownloadProgress {
+        phase: format!("下载 {}", model_name),
+        current: 0.0,
+        total: 100.0,
+        percent: 0,
+    }).ok();
+    
     // 读取流式响应 - 使用缓冲区处理跨 chunk 的 JSON 行
     use futures_util::StreamExt;
     let mut stream = response.bytes_stream();
@@ -737,9 +745,16 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
                             let comp = completed.as_u64().unwrap_or(0);
                             if total > 0 {
                                 let percent = (comp as f64 / total as f64 * 100.0) as u64;
-                                // 每变化 5% 才发送更新，减少日志刷屏
-                                if percent >= last_percent + 5 || percent >= 100 {
+                                // 每变化 1% 才发送更新
+                                if percent >= last_percent + 1 || percent >= 100 {
                                     last_percent = percent;
+                                    // 发送进度条更新
+                                    app.emit("model-download-progress", crate::download::DownloadProgress {
+                                        phase: format!("下载 {}", model_name),
+                                        current: comp as f64,
+                                        total: total as f64,
+                                        percent: percent as u8,
+                                    }).ok();
                                     format!("下载中... {}%", percent)
                                 } else {
                                     continue; // 跳过重复状态
@@ -766,6 +781,14 @@ pub async fn pull_model(model_name: String, app: tauri::AppHandle) -> Result<(),
             }
         }
     }
+    
+    // 发送完成事件
+    app.emit("model-download-progress", crate::download::DownloadProgress {
+        phase: format!("{} 下载完成", model_name),
+        current: 100.0,
+        total: 100.0,
+        percent: 100,
+    }).ok();
     
     app.emit("model-progress", "=== ✅ 模型下载完成 ===").ok();
     Ok(())

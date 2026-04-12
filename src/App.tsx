@@ -1403,6 +1403,32 @@ function App() {
           
           {/* 推荐模型 */}
           <h3 className="font-medium mb-3 mt-6">推荐模型</h3>
+          
+          {/* 模型下载进度条 */}
+          {downloadStatus === 'downloading' && downloadProgress && (
+            <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                  {downloadProgress.phase}
+                </span>
+                <span className="text-sm text-blue-600 dark:text-blue-400">
+                  {downloadProgress.percent}%
+                </span>
+              </div>
+              <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2">
+                <div 
+                  className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${downloadProgress.percent}%` }}
+                ></div>
+              </div>
+              <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                {downloadProgress.current > 0 && downloadProgress.total > 0 
+                  ? `${(downloadProgress.current / 1024 / 1024 / 1024).toFixed(2)} GB / ${(downloadProgress.total / 1024 / 1024 / 1024).toFixed(2)} GB`
+                  : '正在下载...'}
+              </div>
+            </div>
+          )}
+          
           <div className="space-y-2 max-h-60 overflow-y-auto">
             {[
               { name: 'phi3.5', size: '2.2GB', desc: '微软轻量级模型，适合日常对话', recommended: true },
@@ -1431,26 +1457,39 @@ function App() {
                 </div>
                 <button
                   onClick={async () => {
-                    if (installedModels.some(m => m.name === model.name || m.name.startsWith(model.name.split(':')[0]))) {
+                    const modelExists = installedModels.some(m => m.name === model.name || m.name.startsWith(model.name.split(':')[0]))
+                    if (modelExists) {
                       alert(`${model.name} 已安装`)
                       return
                     }
                     if (!confirm(`确定要安装 ${model.name} (${model.size})？`)) return
                     
+                    setDownloadStatus('downloading')
                     setInstallLog([`开始下载 ${model.name}...`])
                     try {
                       await invoke('pull_model', { modelName: model.name })
                       setInstallLog(prev => [...prev, `✅ ${model.name} 安装成功`])
+                      setDownloadStatus('completed')
                       // 刷新已安装列表
                       await loadInstalledModels()
+                      // 重置状态
+                      setTimeout(() => {
+                        setDownloadStatus('idle')
+                        setDownloadProgress(null)
+                      }, 2000)
                     } catch (err) {
                       setInstallLog(prev => [...prev, `❌ 安装失败: ${err}`])
+                      setDownloadStatus('failed')
                     }
                   }}
                   disabled={downloadStatus === 'downloading'}
                   className="px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 disabled:opacity-50"
                 >
-                  {installedModels.some(m => m.name === model.name || m.name.startsWith(model.name.split(':')[0])) ? '已安装' : '安装'}
+                  {downloadStatus === 'downloading' && downloadProgress?.phase?.includes(model.name) 
+                    ? `${downloadProgress.percent}%` 
+                    : installedModels.some(m => m.name === model.name || m.name.startsWith(model.name.split(':')[0])) 
+                      ? '已安装' 
+                      : '安装'}
                 </button>
               </div>
             ))}
