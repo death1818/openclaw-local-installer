@@ -319,14 +319,16 @@ function App() {
     // 只在进入启动器时才处理
     if (step !== 'launcher') return
     
+    // 默认显示已停止状态
+    setGatewayStatus('stopped')
+    setStartupProgress(0)
+    
     // 检查是否有 Docker 部署标记
     const dockerDeployed = localStorage.getItem('openclaw_docker_deployed') === 'true'
     
     if (dockerDeployed) {
       // Docker 模式：检测容器状态
       console.log('Docker 模式，检测容器状态...')
-      setGatewayStatus('starting')
-      setStartupProgress(5)
       setDockerMode(true)
       
       const checkStatus = async () => {
@@ -347,23 +349,16 @@ function App() {
             setStartupProgress(100)
             return 'ready'
           } else if (!status.container_running) {
-            // 容器未运行，清除部署标记，提示用户重新部署
+            // 容器未运行，清除部署标记
             console.log('容器未运行，清除部署标记')
             localStorage.removeItem('openclaw_docker_deployed')
             setDockerMode(false)
-            setGatewayStatus('stopped')
-            setStartupProgress(0)
-            if (status.error) {
-              setError(status.error)
-            }
             return 'stopped'
           } else {
-            // 容器运行但 Gateway 未就绪
+            // 容器运行但 Gateway 未就绪，显示启动中
             console.log('容器运行但 Gateway 未就绪')
             setGatewayStatus('starting')
-            if (status.logs) {
-              console.log('容器日志:', status.logs)
-            }
+            setStartupProgress(5)
             return 'starting'
           }
         } catch (e) {
@@ -371,36 +366,17 @@ function App() {
           // 检测失败，清除部署标记
           localStorage.removeItem('openclaw_docker_deployed')
           setDockerMode(false)
-          setGatewayStatus('stopped')
-          setError('检测容器状态失败: ' + String(e))
           return 'error'
         }
       }
       
-      // 立即检测一次
+      // 检测一次
       checkStatus()
-      
-      // 轮询检测（最多等待30秒）
-      let checkCount = 0
-      const checkInterval = setInterval(async () => {
-        checkCount++
-        const result = await checkStatus()
-        if (result === 'ready' || result === 'stopped' || result === 'error' || checkCount >= 15) {
-          clearInterval(checkInterval)
-          if (checkCount >= 15 && result === 'starting') {
-            // 超时，Gateway 未就绪
-            setGatewayStatus('error')
-            setError('Gateway 启动超时，请检查容器日志')
-          }
-        }
-      }, 2000)
     } else {
-      // 非 Docker 模式：默认显示已停止状态
-      console.log('非 Docker 模式，等待用户操作...')
-      setGatewayStatus('stopped')
-      setStartupProgress(0)
+      // 非 Docker 模式，默认显示已停止
+      console.log('非 Docker 模式，等待用户操作')
     }
-  }, [step]) // 只依赖 step，不依赖 dockerMode（避免循环）)
+  }, [step]))
 
   // 监听 launch-mode 事件（从命令行参数 --launch 触发）
   useEffect(() => {
