@@ -2034,25 +2034,52 @@ providers:
                     let mut token_url = "http://localhost:18789".to_string();
                     
                     // 方式1: 运行 openclaw dashboard 命令获取 Token URL
-                    app.emit("model-progress", "尝试通过 openclaw dashboard 获取 Token...".to_string()).ok();
-                    let dashboard_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                        .args(&["-NoProfile", "-Command", "docker exec openclaw-yuanhuiwang node /app/openclaw.mjs dashboard --no-open 2>&1"])
-                        .creation_flags(CREATE_NO_WINDOW)
-                        .output();
+                    // 尝试多种命令格式
+                    let dashboard_commands = vec![
+                        "docker exec openclaw-yuanhuiwang openclaw dashboard 2>&1",
+                        "docker exec openclaw-yuanhuiwang node /app/openclaw.mjs dashboard 2>&1",
+                        "docker exec openclaw-yuanhuiwang node openclaw.mjs dashboard 2>&1",
+                    ];
                     
-                    if let Ok(output) = dashboard_result {
-                        let stdout = String::from_utf8_lossy(&output.stdout);
-                        for line in stdout.lines() {
-                            // 查找包含 token 的 URL
-                            let trimmed = line.trim();
-                            if trimmed.starts_with("http://localhost") || trimmed.starts_with("http://127.0.0.1") {
-                                // 提取 URL
-                                let url = line.trim();
-                                if url.starts_with("http") {
-                                    token_url = url.to_string();
-                                    app.emit("model-progress", format!("✅ 从 dashboard 获取到链接: {}", token_url)).ok();
+                    for cmd in &dashboard_commands {
+                        app.emit("model-progress", format!("尝试获取Token: {}", cmd)).ok();
+                        
+                        let dashboard_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                            .args(&["-NoProfile", "-Command", cmd])
+                            .creation_flags(CREATE_NO_WINDOW)
+                            .output();
+                        
+                        if let Ok(output) = dashboard_result {
+                            let stdout = String::from_utf8_lossy(&output.stdout);
+                            app.emit("model-progress", format!("dashboard输出:\n{}", stdout)).ok();
+                            
+                            for line in stdout.lines() {
+                                let trimmed = line.trim();
+                                // 查找 http://localhost:18789/#token=xxx 格式的URL
+                                if trimmed.contains("http://localhost:18789") && trimmed.contains("token") {
+                                    // 提取完整URL
+                                    if let Some(start) = trimmed.find("http://localhost") {
+                                        let url_part = &trimmed[start..];
+                                        // URL可能以空格或换行结束，找到结束位置
+                                        let end = url_part.find(|c: char| c.is_whitespace()).unwrap_or(url_part.len());
+                                        let url = &url_part[..end];
+                                        if url.starts_with("http") && url.contains("token") {
+                                            token_url = url.to_string();
+                                            app.emit("model-progress", format!("✅ 获取到Token URL: {}", token_url)).ok();
+                                            break;
+                                        }
+                                    }
+                                }
+                                // 也查找以 http://localhost 开头的其他格式
+                                else if trimmed.starts_with("http://localhost") || trimmed.starts_with("http://127.0.0.1") {
+                                    token_url = trimmed.to_string();
+                                    app.emit("model-progress", format!("✅ 获取到链接: {}", token_url)).ok();
                                     break;
                                 }
+                            }
+                            
+                            if token_url != "http://localhost:18789" {
+                                break;
                             }
                         }
                     }
@@ -2598,20 +2625,38 @@ pub async fn get_docker_token_url() -> Result<String, String> {
     
     let mut token_url = "http://localhost:18789".to_string();
     
-    // 方式1: 运行 openclaw dashboard 命令获取（正确的路径和参数）
-    let dashboard_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-        .args(&["-NoProfile", "-Command", "docker exec openclaw-yuanhuiwang node /app/openclaw.mjs dashboard --no-open 2>&1"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output();
+    // 尝试多种命令格式获取 Token URL
+    let dashboard_commands = vec![
+        "docker exec openclaw-yuanhuiwang openclaw dashboard 2>&1",
+        "docker exec openclaw-yuanhuiwang node /app/openclaw.mjs dashboard 2>&1",
+        "docker exec openclaw-yuanhuiwang node openclaw.mjs dashboard 2>&1",
+    ];
     
-    if let Ok(output) = dashboard_result {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        for line in stdout.lines() {
-            let trimmed = line.trim();
-            // 查找以 http:// 开头的完整 URL
-            if trimmed.starts_with("http://localhost") || trimmed.starts_with("http://127.0.0.1") {
-                token_url = trimmed.to_string();
-                return Ok(token_url);
+    for cmd in &dashboard_commands {
+        let result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-NoProfile", "-Command", cmd])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        
+        if let Ok(output) = result {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                let trimmed = line.trim();
+                // 查找 http://localhost:18789/#token=xxx 格式的URL
+                if trimmed.contains("http://localhost:18789") && trimmed.contains("token") {
+                    if let Some(start) = trimmed.find("http://localhost") {
+                        let url_part = &trimmed[start..];
+                        let end = url_part.find(|c: char| c.is_whitespace()).unwrap_or(url_part.len());
+                        let url = &url_part[..end];
+                        if url.starts_with("http") && url.contains("token") {
+                            return Ok(url.to_string());
+                        }
+                    }
+                }
+                // 也查找其他以 http://localhost 开头的格式
+                else if trimmed.starts_with("http://localhost") || trimmed.starts_with("http://127.0.0.1") {
+                    return Ok(trimmed.to_string());
+                }
             }
         }
     }
@@ -2646,24 +2691,8 @@ pub async fn get_docker_token_url() -> Result<String, String> {
             if line.starts_with("OPENCLAW_GATEWAY_TOKEN=") {
                 let token = line.trim_start_matches("OPENCLAW_GATEWAY_TOKEN=").trim();
                 if !token.is_empty() {
-                    return Ok(format!("http://localhost:18789/?token={}", token));
+                    return Ok(format!("http://localhost:18789/#token={}", token));
                 }
-            }
-        }
-    }
-    
-    // 方式4: 从容器内读取 token 文件
-    let paths = vec!["/root/.openclaw/token.txt", "/home/node/.openclaw/token.txt", "/app/.openclaw/token.txt"];
-    for path in paths {
-        let exec_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", &format!("docker exec openclaw-yuanhuiwang cat {} 2>$null", path)])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output();
-        
-        if let Ok(output) = exec_result {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            if !stdout.trim().is_empty() {
-                return Ok(format!("http://localhost:18789/?token={}", stdout.trim()));
             }
         }
     }
