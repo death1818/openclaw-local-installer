@@ -391,9 +391,9 @@ function App() {
           return
         }
         
-        // 🔧 关键修复：如果 localStorage 中没有授权状态，但有授权码，检查服务器状态
-        if (!licensed && savedLicenseCode) {
-          console.log('本地授权状态丢失，检查服务器授权状态:', savedLicenseCode)
+        // 🔧 关键修复：启动时检查服务器验证授权码是否被注销（无论本地状态）
+        if (savedLicenseCode) {
+          console.log('检查服务器授权状态:', savedLicenseCode)
           try {
             const response = await fetch('https://www.ku1818.cn/api/license/validate-license', {
               method: 'POST',
@@ -411,6 +411,11 @@ function App() {
               localStorage.removeItem('openclaw_license_code')
               setStep('welcome')
               return
+            }
+            
+            // 如果服务器验证失败（非revoked情况，如格式错误等）
+            if (!data.success || !data.valid) {
+              console.log('服务器验证失败，但非注销状态，继续检查离线验证')
             }
             
             // 如果服务器显示授权码已被使用，恢复授权状态
