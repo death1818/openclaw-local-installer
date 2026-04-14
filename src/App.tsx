@@ -384,14 +384,15 @@ function App() {
         
         console.log('检测状态:', { openclawInstalled, licensed, installCompleted, configExists, dockerDeployedNow, savedLicenseCode })
         
-        // Docker 部署模式直接进入启动器
+        // Docker 部署模式也需要验证授权状态
         if (dockerDeployedNow) {
-          console.log('Docker 部署模式，进入启动器')
-          setStep('launcher')
-          return
+          console.log('Docker 部署模式，检查授权状态...')
+          // 不直接进入启动器，继续往下验证授权码
         }
         
-        // 🔧 关键修复：启动时检查服务器验证授权码是否被注销（无论本地状态）
+        // 🔧 关键修复：启动时必须检查服务器验证授权码状态
+        let serverValidated = false  // 服务器验证通过标记
+        
         if (savedLicenseCode) {
           console.log('检查服务器授权状态:', savedLicenseCode)
           try {
@@ -433,16 +434,34 @@ function App() {
               return
             }
             
-            // 验证通过，恢复授权状态
+            // 验证通过
             if (data.success && data.valid) {
               console.log('授权码验证通过')
+              serverValidated = true
               licensed = true
               localStorage.setItem('openclaw_licensed', 'true')
               setIsLicensed(true)
             }
           } catch (err) {
             console.error('检查服务器授权状态失败:', err)
+            // 网络错误时，如果是已安装用户，允许离线使用（但显示警告）
+            if (licensed && openclawInstalled) {
+              console.log('网络错误，但已安装用户允许离线使用')
+              serverValidated = true  // 允许离线使用
+            }
           }
+        } else {
+          // 没有保存的授权码，需要重新输入
+          console.log('未找到保存的授权码，需要重新验证')
+          licensed = false
+        }
+        
+        // 如果没有通过服务器验证，不能进入启动器
+        if (!serverValidated) {
+          console.log('服务器验证未通过，显示欢迎页')
+          localStorage.removeItem('openclaw_licensed')
+          setStep('welcome')
+          return
         }
         
         // 如果 OpenClaw 已安装但配置不存在，需要清理（但保留授权状态）
