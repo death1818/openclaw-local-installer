@@ -112,6 +112,17 @@ function validateLicenseCode(code: string): boolean {
   return pattern.test(code)
 }
 
+// 获取或创建设备唯一ID
+function getDeviceId(): string {
+  let deviceId = localStorage.getItem('openclaw_device_id')
+  if (!deviceId) {
+    deviceId = `DEV-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`
+    localStorage.setItem('openclaw_device_id', deviceId)
+    console.log('生成新设备ID:', deviceId)
+  }
+  return deviceId
+}
+
 function App() {
   const [step, setStep] = useState<InstallStep>('welcome')
   const [theme, setTheme] = useState<Theme>(() => {
@@ -396,10 +407,11 @@ function App() {
         if (savedLicenseCode) {
           console.log('检查服务器授权状态:', savedLicenseCode)
           try {
+            const deviceId = getDeviceId()
             const response = await fetch('https://www.ku1818.cn/api/license/validate-license', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ code: savedLicenseCode })
+              body: JSON.stringify({ code: savedLicenseCode, device_id: deviceId })
             })
             const data = await response.json()
             console.log('服务器授权状态:', data)
@@ -414,10 +426,10 @@ function App() {
               return
             }
             
-            // 如果授权码已被使用（需要重新激活）
-            if (data.used && !data.valid) {
-              console.log('授权码已被使用，需要重新激活')
-              setError(`授权码已被使用，如需在新设备上使用请联系官方激活\n使用时间: ${data.used_at || '未知'}`)
+            // 如果设备不匹配
+            if (data.device_mismatch) {
+              console.log('授权码已在其他设备激活')
+              setError(`授权码已在其他设备激活，如需在此设备使用请联系官方重新激活\n激活时间: ${data.used_at || '未知'}`)
               localStorage.removeItem('openclaw_licensed')
               localStorage.removeItem('openclaw_license_code')
               setStep('welcome')
@@ -440,6 +452,7 @@ function App() {
               serverValidated = true
               licensed = true
               localStorage.setItem('openclaw_licensed', 'true')
+              localStorage.setItem('openclaw_device_id', deviceId)
               setIsLicensed(true)
             }
           } catch (err) {
@@ -628,18 +641,26 @@ function App() {
     }
     
     try {
-      // 调用线上API验证授权码
+      // 调用线上API验证授权码，传入设备ID
+      const deviceId = getDeviceId()
       const response = await fetch('https://www.ku1818.cn/api/license/validate-license', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code })
+        body: JSON.stringify({ code, device_id: deviceId })
       })
       
       const data = await response.json()
+      console.log('授权验证结果:', data)
       
       // 检测注销状态
       if (data.revoked) {
-        setLicenseError(`授权码已被注销，请联系官方或重新购买授权码\n注销时间: ${data.revoked_at || '未知'}`)
+        setLicenseError(`授权码已被注销，请联系官方或重新购买授权码\n注销时间: ${data.revoked_at || '未知'}\n注销原因: ${data.revoked_reason || '无'}`)
+        return
+      }
+      
+      // 检测设备不匹配
+      if (data.device_mismatch) {
+        setLicenseError(`授权码已在其他设备激活，如需在此设备使用请联系官方重新激活\n激活时间: ${data.used_at || '未知'}`)
         return
       }
       
@@ -647,25 +668,17 @@ function App() {
         setIsLicensed(true)
         localStorage.setItem('openclaw_licensed', 'true')
         localStorage.setItem('openclaw_license_code', code)
+        localStorage.setItem('openclaw_device_id', deviceId)
         setLicenseError('')
         // 授权成功后先准备 Ollama 环境
         setStep('preparing')
         localStorage.setItem('openclaw_docker_deployed', 'true')
       } else {
-        setLicenseError(data.message || '授权码无效或已被使用')
+        setLicenseError(data.message || '授权码无效')
       }
     } catch (err) {
-      // 离线验证（备用）
-      if (validateLicenseCode(code)) {
-        setIsLicensed(true)
-        localStorage.setItem('openclaw_licensed', 'true')
-        setLicenseError('')
-        // 授权成功后先进入 Ollama 设置界面
-        setStep('preparing')
-        localStorage.setItem('openclaw_docker_deployed', 'true')
-      } else {
-        setLicenseError('网络错误，无法验证授权码')
-      }
+      console.error('授权验证网络错误:', err)
+      setLicenseError('网络错误，无法验证授权码，请检查网络连接')
     }
   }
 
