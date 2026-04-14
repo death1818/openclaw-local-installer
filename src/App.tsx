@@ -411,7 +411,7 @@ function App() {
             const response = await fetch('https://www.ku1818.cn/api/license/validate-license', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ code: savedLicenseCode, device_id: deviceId })
+              body: JSON.stringify({ code: savedLicenseCode, device_id: deviceId, check_mode: 'startup' })
             })
             const data = await response.json()
             console.log('服务器授权状态:', data)

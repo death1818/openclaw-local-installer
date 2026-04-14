@@ -1,6 +1,6 @@
 {
   "name": "openclaw-local-installer",
-  "version": "2.6.49",
+  "version": "2.6.50",
   "private": true,
   "scripts": {
     "dev": "vite",
