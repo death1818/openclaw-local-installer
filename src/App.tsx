@@ -403,6 +403,16 @@ function App() {
             const data = await response.json()
             console.log('服务器授权状态:', data)
             
+            // 如果授权码已被注销，显示错误并清除本地状态
+            if (data.revoked) {
+              console.log('授权码已被注销')
+              setError(`授权码已被注销，请联系官方或重新购买授权码\n注销时间: ${data.revoked_at}\n注销原因: ${data.revoked_reason || '无'}`)
+              localStorage.removeItem('openclaw_licensed')
+              localStorage.removeItem('openclaw_license_code')
+              setStep('welcome')
+              return
+            }
+            
             // 如果服务器显示授权码已被使用，恢复授权状态
             if (data.success && data.used_at) {
               console.log('检测到授权码已激活，恢复授权状态')
@@ -587,6 +597,12 @@ function App() {
       })
       
       const data = await response.json()
+      
+      // 检测注销状态
+      if (data.revoked) {
+        setLicenseError(`授权码已被注销，请联系官方或重新购买授权码\n注销时间: ${data.revoked_at || '未知'}`)
+        return
+      }
       
       if (data.valid) {
         setIsLicensed(true)
