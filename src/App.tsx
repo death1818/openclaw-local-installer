@@ -367,7 +367,8 @@ function App() {
         }
         
         const openclawInstalled = await invoke<boolean>('check_openclaw_installed')
-        const licensed = localStorage.getItem('openclaw_licensed') === 'true'
+        let licensed = localStorage.getItem('openclaw_licensed') === 'true'
+        const savedLicenseCode = localStorage.getItem('openclaw_license_code')
         const installCompleted = localStorage.getItem('openclaw_install_completed') === 'true'
         
         // 检查配置文件是否存在
@@ -381,7 +382,7 @@ function App() {
         // 重新获取 Docker 部署状态（可能已被清除）
         const dockerDeployedNow = localStorage.getItem('openclaw_docker_deployed') === 'true'
         
-        console.log('检测状态:', { openclawInstalled, licensed, installCompleted, configExists, dockerDeployedNow })
+        console.log('检测状态:', { openclawInstalled, licensed, installCompleted, configExists, dockerDeployedNow, savedLicenseCode })
         
         // Docker 部署模式直接进入启动器
         if (dockerDeployedNow) {
@@ -390,7 +391,31 @@ function App() {
           return
         }
         
-        // 关键修复：如果 OpenClaw 已安装但配置不存在，必须清理
+        // 🔧 关键修复：如果 localStorage 中没有授权状态，但有授权码，检查服务器状态
+        if (!licensed && savedLicenseCode) {
+          console.log('本地授权状态丢失，检查服务器授权状态:', savedLicenseCode)
+          try {
+            const response = await fetch('https://www.ku1818.cn/api/license/validate-license', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ code: savedLicenseCode })
+            })
+            const data = await response.json()
+            console.log('服务器授权状态:', data)
+            
+            // 如果服务器显示授权码已被使用，恢复授权状态
+            if (data.success && data.used_at) {
+              console.log('检测到授权码已激活，恢复授权状态')
+              licensed = true
+              localStorage.setItem('openclaw_licensed', 'true')
+              setIsLicensed(true)
+            }
+          } catch (err) {
+            console.error('检查服务器授权状态失败:', err)
+          }
+        }
+        
+        // 如果 OpenClaw 已安装但配置不存在，需要清理（但保留授权状态）
         if (openclawInstalled && !configExists) {
           console.log('检测到旧版本（缺少配置），清理中...')
           // 清理旧版本
@@ -399,11 +424,10 @@ function App() {
           } catch (err) {
             console.error('清理旧版本失败:', err)
           }
-          // 清理 localStorage
+          // 清理安装状态（但保留授权码和授权状态）
           localStorage.removeItem('openclaw_install_completed')
-          localStorage.removeItem('openclaw_licensed')
-          localStorage.removeItem('openclaw_license_code')
-          setStep('welcome')
+          // 注意：不再清除授权状态，因为上面已经从服务器恢复了
+          setStep('license') // 跳转到授权页面，而不是欢迎页
           return
         }
         
@@ -411,9 +435,13 @@ function App() {
         if (openclawInstalled && licensed && installCompleted && configExists) {
           console.log('已安装完成，进入启动器')
           setStep('launcher')
+        } else if (licensed && !installCompleted) {
+          // 已授权但未安装完成，跳转到准备页面
+          console.log('已授权但未安装完成，跳转到准备页面')
+          setStep('preparing')
         } else {
-          // 未安装或未授权
-          console.log('未完成安装，显示欢迎页')
+          // 未授权
+          console.log('未授权，显示欢迎页')
           setStep('welcome')
         }
       } catch (err) {
@@ -678,8 +706,9 @@ function App() {
       if (needClean) {
         setInstallLog(prev => [...prev, '检测到旧版本，正在清理...'])
         localStorage.removeItem('openclaw_install_completed')
-        localStorage.removeItem('openclaw_licensed')
-        setInstallLog(prev => [...prev, '✅ 已清理旧版本数据'])
+        // 注意：不再清除授权状态，保留用户已激活的授权码
+        // localStorage.removeItem('openclaw_licensed')
+        setInstallLog(prev => [...prev, '✅ 已清理旧版本数据（保留授权状态）'])
       }
       
       // 步骤1: 检查并安装 OpenClaw
