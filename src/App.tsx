@@ -413,14 +413,29 @@ function App() {
               return
             }
             
-            // 如果服务器验证失败（非revoked情况，如格式错误等）
-            if (!data.success || !data.valid) {
-              console.log('服务器验证失败，但非注销状态，继续检查离线验证')
+            // 如果授权码已被使用（需要重新激活）
+            if (data.used && !data.valid) {
+              console.log('授权码已被使用，需要重新激活')
+              setError(`授权码已被使用，如需在新设备上使用请联系官方激活\n使用时间: ${data.used_at || '未知'}`)
+              localStorage.removeItem('openclaw_licensed')
+              localStorage.removeItem('openclaw_license_code')
+              setStep('welcome')
+              return
             }
             
-            // 如果服务器显示授权码已被使用，恢复授权状态
-            if (data.success && data.used_at) {
-              console.log('检测到授权码已激活，恢复授权状态')
+            // 如果服务器验证失败（无效授权码）
+            if (!data.valid) {
+              console.log('授权码无效')
+              setError('授权码无效，请检查后重试')
+              localStorage.removeItem('openclaw_licensed')
+              localStorage.removeItem('openclaw_license_code')
+              setStep('welcome')
+              return
+            }
+            
+            // 验证通过，恢复授权状态
+            if (data.success && data.valid) {
+              console.log('授权码验证通过')
               licensed = true
               localStorage.setItem('openclaw_licensed', 'true')
               setIsLicensed(true)
