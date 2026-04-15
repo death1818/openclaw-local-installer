@@ -1420,8 +1420,8 @@ function App() {
             // 保存安装完成状态
             localStorage.setItem('openclaw_install_completed', 'true')
             
-            // 自动安装默认技能（微信、钉钉、企业微信）
-            const defaultSkills = ['weixin', 'dingtalk', 'wecom']
+            // 自动安装默认技能
+            const defaultSkills = ['openclaw-weixin', 'ddingtalk', 'wecom', 'lightclawbot', 'memory-tdai', 'openclaw-plugin-yuanbao']
             for (const slug of defaultSkills) {
               try {
                 await invoke('install_skill', { slug })
@@ -2273,18 +2273,22 @@ function App() {
     
     // 技能名称映射
     const skillNameMap: Record<string, string> = {
-      '微信': 'weixin', '微信助手': 'weixin',
-      '钉钉': 'dingtalk', '钉钉助手': 'dingtalk',
+      '微信': 'openclaw-weixin', '微信助手': 'openclaw-weixin',
+      '钉钉': 'ddingtalk', '钉钉助手': 'ddingtalk',
       '企业微信': 'wecom', '企业微信助手': 'wecom',
+      '元宝': 'openclaw-plugin-yuanbao', '元宝bot': 'openclaw-plugin-yuanbao',
+      'lightclawbot': 'lightclawbot', '机器人框架': 'lightclawbot',
+      '记忆': 'memory-tdai', '记忆系统': 'memory-tdai',
       '天气': 'weather', '天气查询': 'weather',
       'github': 'github', 'GitHub助手': 'github', 'GitHub': 'github',
       'tailscale': 'tailscale',
       '摘要': 'summarize', '网页摘要': 'summarize',
       'obsidian': 'obsidian', '笔记': 'obsidian',
       '视频': 'video-frames', '视频处理': 'video-frames',
-      '浏览器': 'browser', '网页自动化': 'browser',
+      '浏览器': 'agent-browser', '网页自动化': 'agent-browser',
       '搜索': 'web-search', '网页搜索': 'web-search',
       '工作流': 'clawflow', 'clawflow': 'clawflow',
+      'adp': 'adp-openclaw', '适配器': 'adp-openclaw',
     }
     
     if (skillToInstall) {
