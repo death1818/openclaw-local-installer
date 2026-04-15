@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-shell'
@@ -192,6 +192,21 @@ function App() {
   const [chatSelectedModel, setChatSelectedModel] = useState('')
   const [chatConnected, setChatConnected] = useState(false)
   const [chatAttachedFile, setChatAttachedFile] = useState<string>('')
+  const chatMessagesEndRef = useRef<HTMLDivElement>(null)
+  const chatMessagesContainerRef = useRef<HTMLDivElement>(null)
+
+  // 聊天消息自动滚动
+  const scrollToChatBottom = () => {
+    const container = chatMessagesContainerRef.current
+    if (container) {
+      container.scrollTop = container.scrollHeight
+    }
+    chatMessagesEndRef.current?.scrollIntoView({ behavior: 'auto' })
+  }
+
+  useEffect(() => {
+    scrollToChatBottom()
+  }, [chatMessages, chatLoading])
   
   // 模型训练状态
   const [trainingCategory, setTrainingCategory] = useState<string>('')
@@ -2457,7 +2472,7 @@ function App() {
       </div>
       
       {/* 消息列表 */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div ref={chatMessagesContainerRef} className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
         {chatMessages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center">
             <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 flex items-center justify-center mb-4">
@@ -2523,6 +2538,7 @@ function App() {
             </div>
           </div>
         )}
+        <div ref={chatMessagesEndRef} />
       </div>
       
       {/* 输入区域 */}
