@@ -941,22 +941,20 @@ function App() {
   const loadRecommendedSkills = async () => {
     setSkillSearchLoading(true)
     try {
-      // 先加载已安装列表
+      // 加载推荐列表（后端已自动同步 installed 状态）
+      const skills = await invoke<RemoteSkill[]>('get_recommended_skills')
+      console.log('加载推荐技能:', skills.length, '个')
+      
+      // 获取已安装列表用于显示
       const installedList = await invoke<InstalledSkill[]>('get_installed_skills')
+      console.log('已安装技能:', installedList.map(s => s.slug))
       setInstalledSkills(installedList)
       
-      // 再加载推荐列表
-      const skills = await invoke<RemoteSkill[]>('get_recommended_skills')
-      // 根据 installedList 设置 installed 状态
-      const installedSlugs = installedList.map(s => s.slug)
-      const skillsWithStatus = skills.map(s => ({
-        ...s,
-        installed: installedSlugs.includes(s.slug)
-      }))
-      setRemoteSkills(skillsWithStatus)
+      // 使用后端返回的 installed 状态
+      setRemoteSkills(skills)
     } catch (err) {
       console.error('加载推荐技能失败:', err)
-      setError('加载推荐技能失败，请检查网络连接或稍后重试')
+      setError('加载推荐技能失败，请稍后重试')
     } finally {
       setSkillSearchLoading(false)
     }

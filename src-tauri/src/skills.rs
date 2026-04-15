@@ -72,6 +72,9 @@ pub async fn get_recommended_skills() -> Result<Vec<RemoteSkill>, String> {
     let builtin = get_builtin_skills();
     let installed = get_installed_slugs();
     
+    // 调试日志
+    println!("[Skills] 已安装技能: {:?}", installed);
+    
     Ok(builtin.into_iter().map(|mut s| {
         s.installed = installed.contains(&s.slug);
         s
@@ -113,6 +116,8 @@ pub async fn install_skill(slug: String, app: tauri::AppHandle) -> Result<(), St
         .ok_or("无法找到配置目录")?
         .join("openclaw")
         .join("skills");
+    
+    println!("[Skills] 技能目录: {:?}", skills_dir);
     
     std::fs::create_dir_all(&skills_dir).map_err(|e| e.to_string())?;
     
@@ -245,11 +250,13 @@ fn get_installed_skills_internal() -> Result<Vec<InstalledSkill>, String> {
 }
 
 fn get_installed_slugs() -> Vec<String> {
-    get_installed_skills_internal()
+    let result = get_installed_skills_internal()
         .unwrap_or_default()
         .iter()
         .map(|s| s.slug.clone())
-        .collect()
+        .collect();
+    println!("[Skills] get_installed_slugs: {:?}", result);
+    result
 }
 
 /// 内置推荐技能列表（300+ 技能）
