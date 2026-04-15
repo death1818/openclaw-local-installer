@@ -1431,11 +1431,20 @@ function App() {
             // 保存安装完成状态
             localStorage.setItem('openclaw_install_completed', 'true')
             
-            // 自动安装默认技能
-            const defaultSkills = ['openclaw-weixin', 'ddingtalk', 'wecom', 'lightclawbot', 'memory-tdai', 'openclaw-plugin-yuanbao']
+            // 自动安装默认技能 - 记忆系统优先（核心功能）
+            const defaultSkills = [
+              'memory-tdai',           // 记忆系统（核心必装）
+              'openclaw-weixin',       // 微信助手
+              'ddingtalk',             // 钉钉助手
+              'wecom',                 // 企业微信助手
+              'lightclawbot',          // 机器人框架
+              'openclaw-plugin-yuanbao' // 元宝Bot
+            ]
             for (const slug of defaultSkills) {
               try {
+                console.log(`正在安装核心技能: ${slug}`)
                 await invoke('install_skill', { slug })
+                console.log(`核心技能 ${slug} 安装成功`)
               } catch (e) {
                 console.warn(`安装技能 ${slug} 失败:`, e)
               }
@@ -2268,7 +2277,7 @@ function App() {
       '企业微信': 'wecom', '企业微信助手': 'wecom',
       '元宝': 'openclaw-plugin-yuanbao', '元宝bot': 'openclaw-plugin-yuanbao',
       'lightclawbot': 'lightclawbot', '机器人框架': 'lightclawbot',
-      '记忆': 'memory-tdai', '记忆系统': 'memory-tdai',
+      '记忆': 'memory-tdai', '记忆系统': 'memory-tdai', 'TDAI': 'memory-tdai', 'tdai': 'memory-tdai',
       '天气': 'weather', '天气查询': 'weather',
       'github': 'github', 'GitHub助手': 'github', 'GitHub': 'github',
       'tailscale': 'tailscale',
@@ -2279,6 +2288,14 @@ function App() {
       '搜索': 'web-search', '网页搜索': 'web-search',
       '工作流': 'clawflow', 'clawflow': 'clawflow',
       'adp': 'adp-openclaw', '适配器': 'adp-openclaw',
+      'openai': 'openai-api', 'chatgpt': 'openai-api', 'gpt': 'openai-api',
+      'claude': 'claude-api',
+      'gemini': 'gemini-api',
+      '文心': 'ernie-api', '文心一言': 'ernie-api',
+      '通义': 'qwen-api', '通义千问': 'qwen-api',
+      'deepseek': 'deepseek-api',
+      '绘画': 'ai-painting', 'AI绘画': 'ai-painting',
+      '翻译': 'realtime-translate', 'AI翻译': 'realtime-translate',
     }
     
     if (skillToInstall) {
