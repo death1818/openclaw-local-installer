@@ -530,6 +530,44 @@ fn get_builtin_skills() -> Vec<RemoteSkill> {
             installed: false,
             update_available: false,
         },
+        
+        // 即时通讯类
+        RemoteSkill {
+            name: "微信助手".to_string(),
+            slug: "weixin".to_string(),
+            description: "微信消息发送、接收、联系人管理，支持私聊和群聊操作".to_string(),
+            version: "1.0.0".to_string(),
+            author: "OpenClaw".to_string(),
+            downloads: 20000,
+            category: "即时通讯".to_string(),
+            tags: vec!["微信".to_string(), "通讯".to_string(), "社交".to_string()],
+            installed: false,
+            update_available: false,
+        },
+        RemoteSkill {
+            name: "钉钉助手".to_string(),
+            slug: "dingtalk".to_string(),
+            description: "钉钉消息发送、接收、群组管理，支持机器人推送和审批流程".to_string(),
+            version: "1.0.0".to_string(),
+            author: "OpenClaw".to_string(),
+            downloads: 18000,
+            category: "即时通讯".to_string(),
+            tags: vec!["钉钉".to_string(), "通讯".to_string(), "办公".to_string()],
+            installed: false,
+            update_available: false,
+        },
+        RemoteSkill {
+            name: "企业微信助手".to_string(),
+            slug: "wecom".to_string(),
+            description: "企业微信消息发送、接收、通讯录管理，支持应用消息和群机器人".to_string(),
+            version: "1.0.0".to_string(),
+            author: "OpenClaw".to_string(),
+            downloads: 16000,
+            category: "即时通讯".to_string(),
+            tags: vec!["企业微信".to_string(), "通讯".to_string(), "办公".to_string()],
+            installed: false,
+            update_available: false,
+        },
     ]
 }
 

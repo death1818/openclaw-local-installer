@@ -1419,6 +1419,21 @@ function App() {
             setError('')
             // 保存安装完成状态
             localStorage.setItem('openclaw_install_completed', 'true')
+            
+            // 自动安装默认技能（微信、钉钉、企业微信）
+            const defaultSkills = ['weixin', 'dingtalk', 'wecom']
+            for (const slug of defaultSkills) {
+              try {
+                await invoke('install_skill', { slug })
+              } catch (e) {
+                console.warn(`安装技能 ${slug} 失败:`, e)
+              }
+            }
+            
+            // 刷新已安装技能列表
+            const skills = await invoke<InstalledSkill[]>('get_installed_skills')
+            setInstalledSkills(skills)
+            
             // 直接进入启动器界面
             setStep('launcher')
             setGatewayStatus('starting')
@@ -2236,6 +2251,81 @@ function App() {
     setChatLoading(true)
     
     const assistantId = (Date.now() + 1).toString()
+    
+    // 检测技能安装请求
+    const skillInstallPatterns = [
+      /安装(.+?)技能/,
+      /安装(.+?)插件/,
+      /帮我安装(.+)/,
+      /我想安装(.+)/,
+      /install skill (.+)/i,
+      /安装一个(.+)/,
+    ]
+    
+    let skillToInstall: string | null = null
+    for (const pattern of skillInstallPatterns) {
+      const match = messageContent.match(pattern)
+      if (match) {
+        skillToInstall = match[1].trim()
+        break
+      }
+    }
+    
+    // 技能名称映射
+    const skillNameMap: Record<string, string> = {
+      '微信': 'weixin', '微信助手': 'weixin',
+      '钉钉': 'dingtalk', '钉钉助手': 'dingtalk',
+      '企业微信': 'wecom', '企业微信助手': 'wecom',
+      '天气': 'weather', '天气查询': 'weather',
+      'github': 'github', 'GitHub助手': 'github', 'GitHub': 'github',
+      'tailscale': 'tailscale',
+      '摘要': 'summarize', '网页摘要': 'summarize',
+      'obsidian': 'obsidian', '笔记': 'obsidian',
+      '视频': 'video-frames', '视频处理': 'video-frames',
+      '浏览器': 'browser', '网页自动化': 'browser',
+      '搜索': 'web-search', '网页搜索': 'web-search',
+      '工作流': 'clawflow', 'clawflow': 'clawflow',
+    }
+    
+    if (skillToInstall) {
+      // 映射技能名称
+      const skillSlug = skillNameMap[skillToInstall] || skillToInstall.toLowerCase()
+      
+      try {
+        setChatMessages(prev => [...prev, {
+          id: assistantId,
+          role: 'assistant',
+          content: `⏳ 正在安装「${skillToInstall}」技能...`,
+          timestamp: new Date()
+        }])
+        
+        await invoke('install_skill', { slug: skillSlug })
+        
+        // 刷新已安装技能列表
+        const skills = await invoke<InstalledSkill[]>('get_installed_skills')
+        setInstalledSkills(skills)
+        
+        setChatMessages(prev => {
+          const newMessages = [...prev]
+          const lastMsg = newMessages[newMessages.length - 1]
+          if (lastMsg.id === assistantId) {
+            lastMsg.content = `✅ 「${skillToInstall}」技能安装成功！\n\n现在你可以使用这个技能了。例如：\n- 微信：发送微信消息给某人\n- 钉钉：查看钉钉群消息\n- 企业微信：发送企业微信通知`
+          }
+          return newMessages
+        })
+      } catch (err) {
+        setChatMessages(prev => {
+          const newMessages = [...prev]
+          const lastMsg = newMessages[newMessages.length - 1]
+          if (lastMsg.id === assistantId) {
+            lastMsg.content = `❌ 安装失败: ${err}`
+          }
+          return newMessages
+        })
+      }
+      setChatLoading(false)
+      return
+    }
     
     try {
       const result = await invoke<string>('send_chat_message', {
