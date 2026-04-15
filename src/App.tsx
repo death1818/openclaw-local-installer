@@ -178,6 +178,7 @@ function App() {
   const [skillSearchLoading, setSkillSearchLoading] = useState(false)
   const [installingSkill, setInstallingSkill] = useState<string | null>(null)
   const [skillInstallProgress, setSkillInstallProgress] = useState<{skill: string, progress: number, message: string} | null>(null)
+  const [selectedCategory, setSelectedCategory] = useState<string>('全部')
   
   // 启动器状态
   const [gatewayStatus, setGatewayStatus] = useState<'stopped' | 'starting' | 'running' | 'error'>('stopped')
@@ -940,11 +941,21 @@ function App() {
   const loadRecommendedSkills = async () => {
     setSkillSearchLoading(true)
     try {
+      // 先加载已安装列表
+      const installedList = await invoke<InstalledSkill[]>('get_installed_skills')
+      setInstalledSkills(installedList)
+      
+      // 再加载推荐列表
       const skills = await invoke<RemoteSkill[]>('get_recommended_skills')
-      setRemoteSkills(skills)
+      // 根据 installedList 设置 installed 状态
+      const installedSlugs = installedList.map(s => s.slug)
+      const skillsWithStatus = skills.map(s => ({
+        ...s,
+        installed: installedSlugs.includes(s.slug)
+      }))
+      setRemoteSkills(skillsWithStatus)
     } catch (err) {
       console.error('加载推荐技能失败:', err)
-      // 显示友好的错误提示
       setError('加载推荐技能失败，请检查网络连接或稍后重试')
     } finally {
       setSkillSearchLoading(false)
@@ -1647,7 +1658,23 @@ function App() {
   )
   
   // 渲染技能管理界面
-  const renderSkillManagement = () => (
+  const renderSkillManagement = () => {
+    // 获取所有分类
+    const categories = ['全部', ...Array.from(new Set(remoteSkills.map(s => s.category)))].sort()
+    
+    // 根据分类筛选技能
+    const filteredSkills = selectedCategory === '全部' 
+      ? remoteSkills 
+      : remoteSkills.filter(s => s.category === selectedCategory)
+    
+    // 按分类分组
+    const skillsByCategory = filteredSkills.reduce((acc, skill) => {
+      if (!acc[skill.category]) acc[skill.category] = []
+      acc[skill.category].push(skill)
+      return acc
+    }, {} as Record<string, typeof remoteSkills>)
+    
+    return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold">技能管理</h2>
@@ -1670,35 +1697,11 @@ function App() {
               有 {skillUpdates.length} 个技能可更新
             </span>
           </div>
-          <div className="flex gap-2 flex-wrap">
-            {skillUpdates.slice(0, 3).map(skill => (
-              <button
-                key={skill.slug}
-                onClick={async () => {
-                  try {
-                    setInstallingSkill(skill.slug);
-                    await invoke('update_skill', { slug: skill.slug });
-                    await Promise.all([loadInstalledSkills(), checkForUpdates()]);
-                    setInstallingSkill(null);
-                    alert('技能更新成功！');
-                  } catch (err) {
-                    console.error('Update failed:', err);
-                    setError(`更新失败: ${err}`);
-                    setInstallingSkill(null);
-                  }
-                }}
-                disabled={installingSkill === skill.slug}
-                className="px-3 py-1 bg-yellow-500 text-white rounded text-sm hover:bg-yellow-600 disabled:opacity-50"
-              >
-                {installingSkill === skill.slug ? '更新中...' : `更新 ${skill.name}`}
-              </button>
-            ))}
-          </div>
         </div>
       )}
       
       {/* 搜索框 */}
-      <div className="mb-6">
+      <div className="mb-4">
         <div className="flex gap-2">
           <input
             type="text"
@@ -1718,20 +1721,39 @@ function App() {
         </div>
       </div>
       
+      {/* 分类筛选 */}
+      <div className="mb-4 flex flex-wrap gap-2">
+        {categories.map(cat => (
+          <button
+            key={cat}
+            onClick={() => setSelectedCategory(cat)}
+            className={`px-3 py-1 rounded-full text-sm transition-colors ${
+              selectedCategory === cat 
+                ? 'bg-blue-500 text-white' 
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+            }`}
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
+      
       {/* 已安装技能 */}
       {installedSkills.length > 0 && (
         <div className="mb-6">
-          <h3 className="font-medium mb-3">已安装技能</h3>
-          <div className="space-y-2">
+          <h3 className="font-medium mb-3 flex items-center gap-2">
+            <span className="text-green-500">✓</span> 已安装技能 ({installedSkills.length})
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {installedSkills.map(skill => (
-              <div key={skill.slug} className="p-3 border border-gray-200 dark:border-gray-600 rounded-lg flex justify-between items-center">
+              <div key={skill.slug} className="p-3 border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 rounded-lg flex justify-between items-center">
                 <div>
-                  <div className="font-medium">{skill.name}</div>
-                  <div className="text-sm text-gray-500">v{skill.version}</div>
+                  <div className="font-medium text-green-700 dark:text-green-300">{skill.name}</div>
+                  <div className="text-xs text-gray-500">{skill.slug} · v{skill.version}</div>
                 </div>
                 <button
                   onClick={() => uninstallSkill(skill.slug)}
-                  className="px-3 py-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                  className="px-2 py-1 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
                 >
                   卸载
                 </button>
@@ -1741,135 +1763,103 @@ function App() {
         </div>
       )}
       
-      {/* 技能列表 */}
-      <div>
-        <h3 className="font-medium mb-3">
-          {searchQuery ? '搜索结果' : '推荐技能'}
-        </h3>
-        
-        {/* 安装进度条 */}
-        {skillInstallProgress && (
-          <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                正在安装: {skillInstallProgress.skill}
-              </span>
-              <span className="text-sm text-blue-600 dark:text-blue-400">
-                {skillInstallProgress.progress}%
-              </span>
-            </div>
-            <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2">
-              <div 
-                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${skillInstallProgress.progress}%` }}
-              ></div>
-            </div>
-            <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-              {skillInstallProgress.message}
-            </div>
+      {/* 安装进度条 */}
+      {skillInstallProgress && (
+        <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+              正在安装: {skillInstallProgress.skill}
+            </span>
+            <span className="text-sm text-blue-600 dark:text-blue-400">
+              {skillInstallProgress.progress}%
+            </span>
           </div>
-        )}
-        
-        <div className="space-y-2 max-h-80 overflow-y-auto">
-          {remoteSkills.map(skill => (
-            <div key={skill.slug} className="p-3 border border-gray-200 dark:border-gray-600 rounded-lg">
-              <div className="flex justify-between items-start mb-2">
-                <div>
-                  <div className="font-medium">{skill.name}</div>
-                  <div className="text-sm text-gray-500">{skill.author} · v{skill.version}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-xs text-gray-400">{skill.downloads.toLocaleString()} 次下载</div>
-                  {skill.tags.length > 0 && (
-                    <div className="flex gap-1 mt-1 justify-end">
+          <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2">
+            <div 
+              className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${skillInstallProgress.progress}%` }}
+            ></div>
+          </div>
+          <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+            {skillInstallProgress.message}
+          </div>
+        </div>
+      )}
+      
+      {/* 技能列表 - 按分类显示 */}
+      <div className="space-y-6">
+        {Object.entries(skillsByCategory).map(([category, skills]) => (
+          <div key={category}>
+            <h3 className="font-medium mb-3 flex items-center gap-2 text-gray-700 dark:text-gray-300">
+              <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+              {category} ({skills.length})
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {skills.map(skill => (
+                <div key={skill.slug} className={`p-3 border rounded-lg ${skill.installed ? 'border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-900/10' : 'border-gray-200 dark:border-gray-600'}`}>
+                  <div className="flex justify-between items-start mb-1">
+                    <div className="font-medium text-sm">{skill.name}</div>
+                    <div className="text-xs text-gray-400">{skill.downloads > 0 ? `${(skill.downloads/1000).toFixed(0)}k` : ''}</div>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 line-clamp-2">{skill.description}</p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex gap-1 flex-wrap">
                       {skill.tags.slice(0, 2).map(tag => (
-                        <span key={tag} className="text-xs bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">
+                        <span key={tag} className="text-xs bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">
                           {tag}
                         </span>
                       ))}
                     </div>
-                  )}
+                    {skill.installed ? (
+                      <span className="px-2 py-0.5 bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 rounded text-xs">已安装</span>
+                    ) : (
+                      <button
+                        onClick={async () => {
+                          try {
+                            setInstallingSkill(skill.slug);
+                            await invoke('install_skill', { slug: skill.slug });
+                            await loadInstalledSkills();
+                            // 更新当前技能列表的状态
+                            setRemoteSkills(prev => prev.map(s => 
+                              s.slug === skill.slug ? { ...s, installed: true } : s
+                            ));
+                            setInstallingSkill(null);
+                          } catch (err) {
+                            console.error('Install failed:', err);
+                            setError(`安装失败: ${err}`);
+                            setInstallingSkill(null);
+                          }
+                        }}
+                        disabled={installingSkill === skill.slug}
+                        className="px-2 py-0.5 bg-blue-500 text-white rounded text-xs hover:bg-blue-600 disabled:opacity-50"
+                      >
+                        {installingSkill === skill.slug ? '安装中...' : '安装'}
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{skill.description}</p>
-              <div className="flex gap-2">
-                {skill.installed ? (
-                  skill.update_available ? (
-                    <button
-                      onClick={async () => {
-                        console.log('Update button clicked:', skill.slug);
-                        try {
-                          setInstallingSkill(skill.slug);
-                          setError('');
-                          await invoke('update_skill', { slug: skill.slug });
-                          await Promise.all([loadInstalledSkills(), checkForUpdates()]);
-                          setInstallingSkill(null);
-                          alert('技能更新成功！');
-                        } catch (err) {
-                          console.error('Update failed:', err);
-                          setError(`更新失败: ${err}`);
-                          setInstallingSkill(null);
-                        }
-                      }}
-                      disabled={installingSkill === skill.slug}
-                      className="px-3 py-1 bg-yellow-500 text-white rounded text-sm hover:bg-yellow-600 disabled:opacity-50 cursor-pointer"
-                    >
-                      {installingSkill === skill.slug ? '更新中...' : '更新'}
-                    </button>
-                  ) : (
-                    <span className="px-3 py-1 bg-green-100 text-green-700 rounded text-sm">已安装</span>
-                  )
-                ) : (
-                  <button
-                    onClick={async () => {
-                      console.log('Install button clicked:', skill.slug);
-                      try {
-                        setInstallingSkill(skill.slug);
-                        setError('');
-                        console.log('Calling install_skill with slug:', skill.slug);
-                        await invoke('install_skill', { slug: skill.slug });
-                        console.log('install_skill completed');
-                        // 刷新已安装列表
-                        await loadInstalledSkills();
-                        // 更新远程技能列表中的 installed 状态
-                        setRemoteSkills(prev => prev.map(s => 
-                          s.slug === skill.slug ? { ...s, installed: true } : s
-                        ));
-                        setInstallingSkill(null);
-                        alert(`技能 ${skill.name} 安装成功！`);
-                      } catch (err) {
-                        console.error('Install failed:', err);
-                        setError(`安装失败: ${err}`);
-                        setInstallingSkill(null);
-                        alert(`安装失败: ${err}`);
-                      }
-                    }}
-                    disabled={installingSkill === skill.slug}
-                    className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 disabled:opacity-50 cursor-pointer"
-                  >
-                    {installingSkill === skill.slug ? '安装中...' : '安装'}
-                  </button>
-                )}
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
       
       <div className="mt-6 flex gap-3">
         <button
-          onClick={() => {
-            setRemoteSkills([])
-            setSearchQuery('')
-            loadRecommendedSkills()
+          onClick={async () => {
+            setSearchQuery('');
+            setSelectedCategory('全部');
+            await loadInstalledSkills();
+            await loadRecommendedSkills();
           }}
-          className="px-6 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
+          className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
         >
-          刷新推荐
+          刷新列表
         </button>
       </div>
     </div>
   )
+  }
 
   // 启动器界面
   const renderLauncher = () => (
