@@ -168,9 +168,9 @@ pub async fn install_skill(slug: String, app: tauri::AppHandle) -> Result<(), St
     let skills_dir = get_skills_dir(&app)?;
     println!("[Skills] 安装技能到: {:?}", skills_dir);
     
-    let skill_dir = skills_dir.join(&slug);
-    std::fs::create_dir_all(&skill_dir).map_err(|e| e.to_string())?;
-    println!("[Skills] 技能目录已创建: {:?}", skill_dir);
+    // 创建技能目录
+    std::fs::create_dir_all(&skills_dir).map_err(|e| e.to_string())?;
+    println!("[Skills] 技能目录已创建: {:?}", skills_dir);
     
     app.emit("skill-install-progress", SkillInstallProgress {
         skill_name: slug.clone(),
@@ -193,71 +193,75 @@ pub async fn install_skill(slug: String, app: tauri::AppHandle) -> Result<(), St
         message: "生成技能配置...".to_string(),
     }).ok();
     
-    // 创建 skill.json
+    // 创建技能对象
     let installed_at = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs().to_string())
         .unwrap_or_else(|_| "unknown".to_string());
     
-    let skill_json = serde_json::json!({
-        "name": skill_name,
-        "slug": slug,
-        "version": "1.0.0",
-        "description": description,
-        "installed_at": installed_at
-    });
+    let new_skill = InstalledSkill {
+        name: skill_name.clone(),
+        slug: slug.clone(),
+        version: "1.0.0".to_string(),
+        path: skills_dir.join(&slug).to_string_lossy().to_string(),
+        installed_at: installed_at.clone(),
+        description: description.clone(),
+    };
     
     app.emit("skill-install-progress", SkillInstallProgress {
         skill_name: slug.clone(),
         status: "installing".to_string(),
         progress: 85,
-        message: "写入技能文件...".to_string(),
+        message: "更新技能注册表...".to_string(),
     }).ok();
     
-    let skill_file = skill_dir.join("skill.json");
-    println!("[Skills] 写入技能文件: {:?}", skill_file);
+    // 读取现有注册表并添加新技能
+    let registry_file = skills_dir.join("registry.json");
+    println!("[Skills] 注册表文件: {:?}", registry_file);
     
-    let json_content = serde_json::to_string_pretty(&skill_json)
-        .map_err(|e| format!("JSON序列化失败: {}", e))?;
-    println!("[Skills] JSON内容长度: {} 字节", json_content.len());
+    let mut skills: Vec<InstalledSkill> = if registry_file.exists() {
+        let content = std::fs::read_to_string(&registry_file)
+            .map_err(|e| format!("读取注册表失败: {}", e))?;
+        serde_json::from_str(&content).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     
-    std::fs::write(&skill_file, &json_content)
-        .map_err(|e| format!("创建技能文件失败: {}", e))?;
+    // 检查是否已安装，如果已安装则更新
+    let existing_idx = skills.iter().position(|s| s.slug == slug);
+    if let Some(idx) = existing_idx {
+        skills[idx] = new_skill;
+        println!("[Skills] 更新已存在的技能: {}", slug);
+    } else {
+        skills.push(new_skill);
+        println!("[Skills] 添加新技能: {}", slug);
+    }
+    
+    // 写入注册表
+    let registry_content = serde_json::to_string_pretty(&skills)
+        .map_err(|e| format!("序列化注册表失败: {}", e))?;
+    
+    std::fs::write(&registry_file, &registry_content)
+        .map_err(|e| format!("写入注册表失败: {}", e))?;
     
     // 强制同步
     #[cfg(windows)]
-    std::fs::File::open(&skill_file).ok().and_then(|mut f| f.sync_all().ok());
+    std::fs::File::open(&registry_file).ok().and_then(|mut f| f.sync_all().ok());
     
-    // 验证文件是否成功写入
-    println!("[Skills] 验证文件: exists={}, size={:?}", 
-        skill_file.exists(), 
-        std::fs::metadata(&skill_file).ok().map(|m| m.len())
+    // 验证
+    println!("[Skills] 验证注册表: exists={}, size={:?}", 
+        registry_file.exists(), 
+        std::fs::metadata(&registry_file).ok().map(|m| m.len())
     );
-    if skill_file.exists() {
-        println!("[Skills] ✅ 技能文件已成功创建");
-        if let Ok(content) = std::fs::read_to_string(&skill_file) {
-            println!("[Skills] 文件内容: {}", content);
-        }
-        
-        // 立即验证目录内容
-        println!("[Skills] === 安装后立即检查目录 ===");
-        if let Ok(entries) = std::fs::read_dir(&skills_dir) {
-            let entries: Vec<_> = entries.flatten().collect();
-            println!("[Skills] 目录中共有 {} 个子项", entries.len());
-            for entry in &entries {
-                println!("[Skills]   - {:?} (is_dir={})", entry.path(), entry.path().is_dir());
-                if entry.path().is_dir() {
-                    if let Ok(sub_entries) = std::fs::read_dir(entry.path()) {
-                        for sub in sub_entries.flatten() {
-                            println!("[Skills]     - {:?}", sub.path());
-                        }
-                    }
-                }
-            }
+    
+    if registry_file.exists() {
+        println!("[Skills] ✅ 技能注册表已成功更新，共 {} 个技能", skills.len());
+        if let Ok(content) = std::fs::read_to_string(&registry_file) {
+            println!("[Skills] 注册表内容: {}", content);
         }
     } else {
-        println!("[Skills] ❌ 技能文件创建失败，文件不存在！");
-        return Err("技能文件创建失败".to_string());
+        println!("[Skills] ❌ 注册表写入失败！");
+        return Err("注册表写入失败".to_string());
     }
     
     app.emit("skill-install-progress", SkillInstallProgress {
@@ -292,13 +296,36 @@ pub async fn check_skill_updates(_app: tauri::AppHandle) -> Result<Vec<RemoteSki
 #[tauri::command]
 pub fn uninstall_skill(slug: String, app: tauri::AppHandle) -> Result<(), String> {
     let skills_dir = get_skills_dir(&app)?;
-    let skill_dir = skills_dir.join(&slug);
+    let registry_file = skills_dir.join("registry.json");
     
-    if skill_dir.exists() {
-        std::fs::remove_dir_all(&skill_dir)
-            .map_err(|e| format!("卸载失败: {}", e))?;
+    if !registry_file.exists() {
+        return Ok(());
     }
     
+    // 读取注册表
+    let content = std::fs::read_to_string(&registry_file)
+        .map_err(|e| format!("读取注册表失败: {}", e))?;
+    
+    let mut skills: Vec<InstalledSkill> = serde_json::from_str(&content)
+        .unwrap_or_default();
+    
+    // 移除指定技能
+    let old_len = skills.len();
+    skills.retain(|s| s.slug != slug);
+    
+    if skills.len() == old_len {
+        println!("[Skills] 技能 {} 不在注册表中", slug);
+        return Ok(());
+    }
+    
+    // 写回注册表
+    let registry_content = serde_json::to_string_pretty(&skills)
+        .map_err(|e| format!("序列化注册表失败: {}", e))?;
+    
+    std::fs::write(&registry_file, &registry_content)
+        .map_err(|e| format!("写入注册表失败: {}", e))?;
+    
+    println!("[Skills] ✅ 技能 {} 已从注册表移除", slug);
     Ok(())
 }
 
@@ -312,54 +339,21 @@ fn get_installed_skills_internal(app: &tauri::AppHandle) -> Result<Vec<Installed
     println!("[Skills] app_config_dir: {:?}", config_dir);
     
     let skills_dir = config_dir.join("skills");
-    println!("[Skills] skills_dir: {:?}", skills_dir);
-    println!("[Skills] 目录存在: {}", skills_dir.exists());
+    let registry_file = skills_dir.join("registry.json");
+    println!("[Skills] registry_file: {:?}", registry_file);
+    println!("[Skills] 文件存在: {}", registry_file.exists());
     
-    if !skills_dir.exists() {
-        println!("[Skills] ⚠️ 技能目录不存在，返回空列表");
+    if !registry_file.exists() {
+        println!("[Skills] ⚠️ 注册表文件不存在，返回空列表");
         return Ok(Vec::new());
     }
     
-    // 列出目录内容
-    match std::fs::read_dir(&skills_dir) {
-        Ok(entries) => {
-            let entries: Vec<_> = entries.flatten().collect();
-            println!("[Skills] 目录中共有 {} 个子项", entries.len());
-            for entry in &entries {
-                println!("[Skills]   - {:?} (is_dir={})", entry.path(), entry.path().is_dir());
-            }
-        }
-        Err(e) => {
-            println!("[Skills] ❌ 无法读取目录: {}", e);
-        }
-    }
+    // 从注册表文件读取
+    let content = std::fs::read_to_string(&registry_file)
+        .map_err(|e| format!("读取注册表失败: {}", e))?;
     
-    let mut skills = Vec::new();
-    
-    match std::fs::read_dir(&skills_dir) {
-        Ok(entries) => {
-            for entry in entries.flatten() {
-                let skill_dir = entry.path();
-                if skill_dir.is_dir() {
-                    let skill_file = skill_dir.join("skill.json");
-                    println!("[Skills] 检查技能文件: {:?}", skill_file);
-                    if skill_file.exists() {
-                        if let Ok(content) = std::fs::read_to_string(&skill_file) {
-                            println!("[Skills] 读取到文件内容: {}", content);
-                            if let Ok(mut skill) = serde_json::from_str::<InstalledSkill>(&content) {
-                                skill.path = skill_dir.to_string_lossy().to_string();
-                                println!("[Skills] ✅ 加载技能: {}", skill.slug);
-                                skills.push(skill);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        Err(e) => {
-            println!("[Skills] ❌ 读取目录失败: {}", e);
-        }
-    }
+    let skills: Vec<InstalledSkill> = serde_json::from_str(&content)
+        .unwrap_or_default();
     
     println!("[Skills] get_installed_skills_internal: 找到 {} 个技能", skills.len());
     Ok(skills)
