@@ -232,6 +232,23 @@ pub async fn install_skill(slug: String, app: tauri::AppHandle) -> Result<(), St
         if let Ok(content) = std::fs::read_to_string(&skill_file) {
             println!("[Skills] 文件内容: {}", content);
         }
+        
+        // 立即验证目录内容
+        println!("[Skills] === 安装后立即检查目录 ===");
+        if let Ok(entries) = std::fs::read_dir(&skills_dir) {
+            let entries: Vec<_> = entries.flatten().collect();
+            println!("[Skills] 目录中共有 {} 个子项", entries.len());
+            for entry in &entries {
+                println!("[Skills]   - {:?} (is_dir={})", entry.path(), entry.path().is_dir());
+                if entry.path().is_dir() {
+                    if let Ok(sub_entries) = std::fs::read_dir(entry.path()) {
+                        for sub in sub_entries.flatten() {
+                            println!("[Skills]     - {:?}", sub.path());
+                        }
+                    }
+                }
+            }
+        }
     } else {
         println!("[Skills] ❌ 技能文件创建失败，文件不存在！");
         return Err("技能文件创建失败".to_string());
