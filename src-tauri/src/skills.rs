@@ -15,6 +15,35 @@ fn get_skills_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> 
             .map_err(|e| format!("创建技能目录失败: {}", e))?;
     }
     
+    // 迁移旧数据（如果存在）
+    if let Some(old_config_dir) = dirs::config_dir() {
+        let old_skills_dir = old_config_dir.join("openclaw").join("skills");
+        if old_skills_dir.exists() && old_skills_dir != skills_dir {
+            println!("[Skills] 检测到旧数据目录: {:?}", old_skills_dir);
+            // 尝试迁移每个技能目录
+            if let Ok(entries) = std::fs::read_dir(&old_skills_dir) {
+                for entry in entries.flatten() {
+                    let src_dir = entry.path();
+                    let dst_dir = skills_dir.join(entry.file_name());
+                    if !dst_dir.exists() && src_dir.is_dir() {
+                        // 创建目标目录
+                        if std::fs::create_dir_all(&dst_dir).is_ok() {
+                            let src_file = src_dir.join("skill.json");
+                            let dst_file = dst_dir.join("skill.json");
+                            if src_file.exists() {
+                                if let Err(e) = std::fs::copy(&src_file, &dst_file) {
+                                    println!("[Skills] 迁移失败 {:?}: {}", src_file, e);
+                                } else {
+                                    println!("[Skills] 已迁移技能: {:?}", entry.file_name());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
     println!("[Skills] 技能目录: {:?}", skills_dir);
     Ok(skills_dir)
 }
