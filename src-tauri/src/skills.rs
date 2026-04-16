@@ -158,6 +158,12 @@ pub fn get_skills_by_category(category: String, app: tauri::AppHandle) -> Result
 pub async fn install_skill(slug: String, app: tauri::AppHandle) -> Result<(), String> {
     app.emit("skill-progress", format!("开始安装: {}", slug)).ok();
     
+    // 打印 app_config_dir 的原始值
+    let config_dir = app.path().app_config_dir()
+        .map_err(|e| format!("无法获取配置目录: {}", e))?;
+    println!("[Skills] === 安装时诊断 ===");
+    println!("[Skills] app_config_dir: {:?}", config_dir);
+    
     // 获取技能目录
     let skills_dir = get_skills_dir(&app)?;
     println!("[Skills] 安装技能到: {:?}", skills_dir);
@@ -299,15 +305,14 @@ pub fn uninstall_skill(slug: String, app: tauri::AppHandle) -> Result<(), String
 // ============ 内部辅助函数 ============
 
 fn get_installed_skills_internal(app: &tauri::AppHandle) -> Result<Vec<InstalledSkill>, String> {
-    let skills_dir = match get_skills_dir(app) {
-        Ok(dir) => dir,
-        Err(e) => {
-            println!("[Skills] ❌ 获取技能目录失败: {}", e);
-            return Ok(Vec::new());
-        }
-    };
+    // 先打印 app_config_dir 的原始值
+    let config_dir = app.path().app_config_dir()
+        .map_err(|e| format!("无法获取配置目录: {}", e))?;
+    println!("[Skills] === 读取时诊断 ===");
+    println!("[Skills] app_config_dir: {:?}", config_dir);
     
-    println!("[Skills] 查找已安装技能，目录: {:?}", skills_dir);
+    let skills_dir = config_dir.join("skills");
+    println!("[Skills] skills_dir: {:?}", skills_dir);
     println!("[Skills] 目录存在: {}", skills_dir.exists());
     
     if !skills_dir.exists() {
