@@ -2490,6 +2490,8 @@ pub async fn send_chat_message(
         "stream": false
     });
     
+    let mut last_error = String::new();
+    
     for endpoint in &endpoints {
         let response = client
             .post(*endpoint)
@@ -2527,6 +2529,17 @@ pub async fn send_chat_message(
                     if let Some(content) = result.get("response").and_then(|v| v.as_str()) {
                         return Ok(content.to_string());
                     }
+
+                    // 返回原始响应
+                    return Ok(result.to_string());
+                }
+            } else {
+                last_error = format!("Gateway 返回错误: {}", res.status());
+            }
+        } else {
+            last_error = format!("Gateway 连接失败: {}", response.unwrap_err());
+        }
+    }
                     
                     // 返回原始响应
                     return Ok(result.to_string());
@@ -2546,26 +2559,45 @@ pub async fn send_chat_message(
         .post("http://localhost:11434/api/chat")
         .json(&ollama_request)
         .send()
-        .await
-        .map_err(|e| format!("所有API端点调用失败: {}", e))?;
-    
-    if !ollama_response.status().is_success() {
-        return Err(format!("Ollama 错误: {}", ollama_response.status()));
+        .await;
+        
+    match ollama_response {
+        Ok(res) if res.status().is_success() => {
+            if let Ok(result) = res.json::<serde_json::Value>().await {
+                // Ollama 响应格式: message.content
+                if let Some(content) = result.get("message")
+                    .and_then(|m| m.get("content"))
+                    .and_then(|c| c.as_str()) {
+                    return Ok(content.to_string());
+                }
+                return Ok(result.to_string());
+            }
+        }
+        Ok(res) => {
+            last_error = format!("Ollama 返回错误: {}", res.status());
+        }
+        Err(e) => {
+            last_error = format!("Ollama 连接失败: {}", e);
+        }
     }
     
-    let result: serde_json::Value = ollama_response
-        .json()
-        .await
-        .map_err(|e| e.to_string())?;
-    
-    // Ollama 响应格式: message.content
-    if let Some(content) = result.get("message")
-        .and_then(|m| m.get("content"))
-        .and_then(|c| c.as_str()) {
-        return Ok(content.to_string());
-    }
-    
-    Ok(result.to_string())
+    // 返回友好的错误信息
+    Err(format!(
+        "无法连接到 AI 服务\n\
+        \n\
+        Gateway: http://localhost:18789 (未运行)\n\
+        Ollama: http://localhost:11434 (未运行)\n\
+        \n\
+        请确保:\n\
+        1. Docker 容器已启动（点击"Docker一键部署")\n\
+        2. 或本地 Ollama 已运行\n\
+        \n\
+        详细错误: {}\n\
+        \n\
+        最后尝试: {}",
+        last_error,
+        "http://localhost:11434/api/chat"
+    ))
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

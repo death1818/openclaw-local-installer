@@ -160,12 +160,11 @@ pub async fn install_skill(slug: String, app: tauri::AppHandle) -> Result<(), St
     
     // 获取技能目录
     let skills_dir = get_skills_dir(&app)?;
+    println!("[Skills] 安装技能到: {:?}", skills_dir);
     
     let skill_dir = skills_dir.join(&slug);
     std::fs::create_dir_all(&skill_dir).map_err(|e| e.to_string())?;
-    
-    let skill_dir = skills_dir.join(&slug);
-    std::fs::create_dir_all(&skill_dir).map_err(|e| e.to_string())?;
+    println!("[Skills] 技能目录已创建: {:?}", skill_dir);
     
     app.emit("skill-install-progress", SkillInstallProgress {
         skill_name: slug.clone(),
@@ -210,8 +209,19 @@ pub async fn install_skill(slug: String, app: tauri::AppHandle) -> Result<(), St
     }).ok();
     
     let skill_file = skill_dir.join("skill.json");
+    println!("[Skills] 写入技能文件: {:?}", skill_file);
     std::fs::write(&skill_file, serde_json::to_string_pretty(&skill_json).unwrap())
         .map_err(|e| format!("创建技能文件失败: {}", e))?;
+    
+    // 验证文件是否成功写入
+    if skill_file.exists() {
+        println!("[Skills] ✅ 技能文件已成功创建: {:?}", skill_file);
+        if let Ok(content) = std::fs::read_to_string(&skill_file) {
+            println!("[Skills] 文件内容: {}", content);
+        }
+    } else {
+        println!("[Skills] ❌ 技能文件创建失败，文件不存在！");
+    }
     
     app.emit("skill-install-progress", SkillInstallProgress {
         skill_name: slug,
