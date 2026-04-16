@@ -3,15 +3,32 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-shell'
 
-// 文件读取函数
+// 文件读取函数 - 添加大小限制
 const readFileContent = async (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
+    // 检查文件大小（最大 500KB）
+    const maxSize = 500 * 1024
+    if (file.size > maxSize) {
+      reject(new Error(`文件太大 (${(file.size/1024).toFixed(1)}KB)，最大支持 500KB。请选择更小的文件。`))
+      return
+    }
+    
     const reader = new FileReader()
     reader.onload = (e) => {
       const content = e.target?.result as string
+      if (!content || content.trim().length === 0) {
+        reject(new Error('文件内容为空'))
+        return
+      }
+      // 限制内容长度（最多 10000 字符）
+      if (content.length > 10000) {
+        console.warn(`文件内容被截断: ${content.length} -> 10000`)
+        resolve(content.substring(0, 10000) + '\n\n... (内容过长已截断)')
+        return
+      }
       resolve(content)
     }
-    reader.onerror = () => reject(new Error('Failed to read file'))
+    reader.onerror = () => reject(new Error('读取文件失败，请检查文件格式'))
     reader.readAsText(file)
   })
 }
@@ -2716,6 +2733,8 @@ function App() {
                   setChatAttachedFile(content)
                 } catch (err) {
                   console.error('读取文件失败:', err)
+                  // 显示错误给用户
+                  setError(`读取文件失败: ${err}`)
                 }
               }
               e.target.value = '' // 重置以允许重复选择同一文件
