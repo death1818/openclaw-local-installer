@@ -12,10 +12,10 @@ use crate::models::InstalledModel;
 fn find_node_exe() -> Option<String> {
     // 检查常见安装路径
     let paths = vec![
-        "C:\\Program Files\\nodejs\\node.exe".to_string(),
-        "C:\\Program Files (x86)\\nodejs\\node.exe".to_string(),
-        format!("{}\\nodejs\\node.exe", std::env::var("LOCALAPPDATA").unwrap_or_default()),
-        format!("{}\\.nodejs\\node.exe", std::env::var("USERPROFILE").unwrap_or_default()),
+        "C:\\Program Files\nodejs\node.exe".to_string(),
+        "C:\\Program Files (x86)\nodejs\node.exe".to_string(),
+        format!("{}\nodejs\node.exe", std::env::var("LOCALAPPDATA").unwrap_or_default()),
+        format!("{}\\.nodejs\node.exe", std::env::var("USERPROFILE").unwrap_or_default()),
     ];
     
     for path in &paths {
@@ -95,7 +95,7 @@ pub async fn check_nodejs_installed() -> Result<bool, String> {
     #[cfg(target_os = "windows")]
     {
         let paths = vec![
-            "C:\\Program Files\\nodejs\\node.exe",
+            "C:\\Program Files\nodejs\node.exe",
         ];
         
         for path in paths {
@@ -181,9 +181,9 @@ async fn install_nodejs_windows(app: &tauri::AppHandle) -> Result<String, String
         // 验证安装
         std::thread::sleep(std::time::Duration::from_secs(1));
         
-        if std::path::Path::new("C:\\Program Files\\nodejs\\node.exe").exists() {
+        if std::path::Path::new("C:\\Program Files\nodejs\node.exe").exists() {
             app.emit("model-progress", "✅ Node.js 已就绪，继续安装 OpenClaw...".to_string()).ok();
-            return Ok("C:\\Program Files\\nodejs".to_string());
+            return Ok("C:\\Program Files\nodejs".to_string());
         }
     }
     
@@ -912,10 +912,10 @@ pub async fn check_openclaw_installed() -> Result<bool, String> {
     {
         // 检查多个可能的路径
         let paths = vec![
-            format!("{}\\npm\\openclaw.cmd", std::env::var("APPDATA").unwrap_or_default()),
-            format!("{}\\npm\\openclaw", std::env::var("APPDATA").unwrap_or_default()),
-            format!("{}\\AppData\\Roaming\\npm\\openclaw.cmd", std::env::var("USERPROFILE").unwrap_or_default()),
-            format!("{}\\AppData\\Roaming\\npm\\openclaw", std::env::var("USERPROFILE").unwrap_or_default()),
+            format!("{}\npm\\openclaw.cmd", std::env::var("APPDATA").unwrap_or_default()),
+            format!("{}\npm\\openclaw", std::env::var("APPDATA").unwrap_or_default()),
+            format!("{}\\AppData\\Roaming\npm\\openclaw.cmd", std::env::var("USERPROFILE").unwrap_or_default()),
+            format!("{}\\AppData\\Roaming\npm\\openclaw", std::env::var("USERPROFILE").unwrap_or_default()),
         ];
         
         for path in paths {
@@ -1049,8 +1049,8 @@ pub async fn install_openclaw(app: tauri::AppHandle) -> Result<(), String> {
         
         // 尝试多个路径查找 openclaw
         let openclaw_paths = vec![
-            "C:\\Program Files\\nodejs\\openclaw.cmd",
-            "C:\\Program Files\\nodejs\\node_modules\\openclaw\\bin\\openclaw.js",
+            "C:\\Program Files\nodejs\\openclaw.cmd",
+            "C:\\Program Files\nodejs\node_modules\\openclaw\\bin\\openclaw.js",
         ];
         
         for path in &openclaw_paths {
@@ -2490,8 +2490,6 @@ pub async fn send_chat_message(
         "stream": false
     });
     
-    let mut last_error = String::new();
-    
     for endpoint in &endpoints {
         let response = client
             .post(*endpoint)
@@ -2529,17 +2527,6 @@ pub async fn send_chat_message(
                     if let Some(content) = result.get("response").and_then(|v| v.as_str()) {
                         return Ok(content.to_string());
                     }
-
-                    // 返回原始响应
-                    return Ok(result.to_string());
-                }
-            } else {
-                last_error = format!("Gateway 返回错误: {}", res.status());
-            }
-        } else {
-            last_error = format!("Gateway 连接失败: {}", response.unwrap_err());
-        }
-    }
                     
                     // 返回原始响应
                     return Ok(result.to_string());
@@ -2560,11 +2547,10 @@ pub async fn send_chat_message(
         .json(&ollama_request)
         .send()
         .await;
-        
+    
     match ollama_response {
         Ok(res) if res.status().is_success() => {
             if let Ok(result) = res.json::<serde_json::Value>().await {
-                // Ollama 响应格式: message.content
                 if let Some(content) = result.get("message")
                     .and_then(|m| m.get("content"))
                     .and_then(|c| c.as_str()) {
@@ -2574,30 +2560,17 @@ pub async fn send_chat_message(
             }
         }
         Ok(res) => {
-            last_error = format!("Ollama 返回错误: {}", res.status());
+            return Err(format!("Ollama 错误: {}", res.status()));
         }
         Err(e) => {
-            last_error = format!("Ollama 连接失败: {}", e);
+            return Err(format!(
+                "无法连接到 AI 服务\n\n请确保:\n1. Docker 容器已启动\n2. 或本地 Ollama 已运行\n\n详细错误: {}",
+                e
+            ));
         }
     }
     
-    // 返回友好的错误信息
-    Err(format!(
-        "无法连接到 AI 服务\n\
-        \n\
-        Gateway: http://localhost:18789 (未运行)\n\
-        Ollama: http://localhost:11434 (未运行)\n\
-        \n\
-        请确保:\n\
-        1. Docker 容器已启动（点击"Docker一键部署")\n\
-        2. 或本地 Ollama 已运行\n\
-        \n\
-        详细错误: {}\n\
-        \n\
-        最后尝试: {}",
-        last_error,
-        "http://localhost:11434/api/chat"
-    ))
+    Err("无法连接到 AI 服务".to_string())
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
