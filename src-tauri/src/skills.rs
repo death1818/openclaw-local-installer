@@ -210,17 +210,31 @@ pub async fn install_skill(slug: String, app: tauri::AppHandle) -> Result<(), St
     
     let skill_file = skill_dir.join("skill.json");
     println!("[Skills] 写入技能文件: {:?}", skill_file);
-    std::fs::write(&skill_file, serde_json::to_string_pretty(&skill_json).unwrap())
+    
+    let json_content = serde_json::to_string_pretty(&skill_json)
+        .map_err(|e| format!("JSON序列化失败: {}", e))?;
+    println!("[Skills] JSON内容长度: {} 字节", json_content.len());
+    
+    std::fs::write(&skill_file, &json_content)
         .map_err(|e| format!("创建技能文件失败: {}", e))?;
     
+    // 强制同步
+    #[cfg(windows)]
+    std::fs::File::open(&skill_file).ok().and_then(|mut f| f.sync_all().ok());
+    
     // 验证文件是否成功写入
+    println!("[Skills] 验证文件: exists={}, size={:?}", 
+        skill_file.exists(), 
+        std::fs::metadata(&skill_file).ok().map(|m| m.len())
+    );
     if skill_file.exists() {
-        println!("[Skills] ✅ 技能文件已成功创建: {:?}", skill_file);
+        println!("[Skills] ✅ 技能文件已成功创建");
         if let Ok(content) = std::fs::read_to_string(&skill_file) {
             println!("[Skills] 文件内容: {}", content);
         }
     } else {
         println!("[Skills] ❌ 技能文件创建失败，文件不存在！");
+        return Err("技能文件创建失败".to_string());
     }
     
     app.emit("skill-install-progress", SkillInstallProgress {
@@ -277,10 +291,25 @@ fn get_installed_skills_internal(app: &tauri::AppHandle) -> Result<Vec<Installed
     };
     
     println!("[Skills] 查找已安装技能，目录: {:?}", skills_dir);
+    println!("[Skills] 目录存在: {}", skills_dir.exists());
     
     if !skills_dir.exists() {
         println!("[Skills] ⚠️ 技能目录不存在，返回空列表");
         return Ok(Vec::new());
+    }
+    
+    // 列出目录内容
+    match std::fs::read_dir(&skills_dir) {
+        Ok(entries) => {
+            let entries: Vec<_> = entries.flatten().collect();
+            println!("[Skills] 目录中共有 {} 个子项", entries.len());
+            for entry in &entries {
+                println!("[Skills]   - {:?} (is_dir={})", entry.path(), entry.path().is_dir());
+            }
+        }
+        Err(e) => {
+            println!("[Skills] ❌ 无法读取目录: {}", e);
+        }
     }
     
     let mut skills = Vec::new();
