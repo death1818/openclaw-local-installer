@@ -43,6 +43,8 @@ use download::cancel_model_download;
 use skills::{
     search_skills,
     get_recommended_skills,
+    get_skills_by_category,
+    get_skill_categories,
     install_skill,
     update_skill,
     get_installed_skills,
@@ -88,6 +90,8 @@ fn main() {
             // 技能管理
             search_skills,
             get_recommended_skills,
+            get_skills_by_category,
+            get_skill_categories,
             install_skill,
             update_skill,
             get_installed_skills,

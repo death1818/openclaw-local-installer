@@ -1,6 +1,23 @@
 use serde::{Deserialize, Serialize};
 use std::process::Command;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
+
+/// 获取技能存储目录
+fn get_skills_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    // 使用 Tauri 的应用配置目录，确保路径一致性
+    let config_dir = app.path().app_config_dir()
+        .map_err(|e| format!("无法获取配置目录: {}", e))?;
+    let skills_dir = config_dir.join("skills");
+    
+    // 确保目录存在
+    if !skills_dir.exists() {
+        std::fs::create_dir_all(&skills_dir)
+            .map_err(|e| format!("创建技能目录失败: {}", e))?;
+    }
+    
+    println!("[Skills] 技能目录: {:?}", skills_dir);
+    Ok(skills_dir)
+}
 
 /// 远程技能信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,7 +62,7 @@ pub async fn search_skills(query: String, app: tauri::AppHandle) -> Result<Vec<R
     
     // 获取内置技能并过滤
     let builtin = get_builtin_skills();
-    let installed = get_installed_slugs();
+    let installed = get_installed_slugs(&app);
     
     let filtered: Vec<RemoteSkill> = builtin
         .into_iter()
@@ -68,12 +85,13 @@ pub async fn search_skills(query: String, app: tauri::AppHandle) -> Result<Vec<R
 
 /// 获取推荐技能
 #[tauri::command]
-pub async fn get_recommended_skills() -> Result<Vec<RemoteSkill>, String> {
+pub async fn get_recommended_skills(app: tauri::AppHandle) -> Result<Vec<RemoteSkill>, String> {
     let builtin = get_builtin_skills();
-    let installed = get_installed_slugs();
+    let installed = get_installed_slugs(&app);
     
     // 调试日志
     println!("[Skills] 已安装技能: {:?}", installed);
+    println!("[Skills] 技能目录内容: {:?}", get_skills_dir(&app));
     
     Ok(builtin.into_iter().map(|mut s| {
         s.installed = installed.contains(&s.slug);
@@ -93,9 +111,9 @@ pub fn get_skill_categories() -> Result<Vec<String>, String> {
 
 /// 按分类获取技能
 #[tauri::command]
-pub fn get_skills_by_category(category: String) -> Result<Vec<RemoteSkill>, String> {
+pub fn get_skills_by_category(category: String, app: tauri::AppHandle) -> Result<Vec<RemoteSkill>, String> {
     let builtin = get_builtin_skills();
-    let installed = get_installed_slugs();
+    let installed = get_installed_slugs(&app);
     
     Ok(builtin.into_iter()
         .filter(|s| s.category == category)
@@ -112,14 +130,10 @@ pub async fn install_skill(slug: String, app: tauri::AppHandle) -> Result<(), St
     app.emit("skill-progress", format!("开始安装: {}", slug)).ok();
     
     // 获取技能目录
-    let skills_dir = dirs::config_dir()
-        .ok_or("无法找到配置目录")?
-        .join("openclaw")
-        .join("skills");
+    let skills_dir = get_skills_dir(&app)?;
     
-    println!("[Skills] 技能目录: {:?}", skills_dir);
-    
-    std::fs::create_dir_all(&skills_dir).map_err(|e| e.to_string())?;
+    let skill_dir = skills_dir.join(&slug);
+    std::fs::create_dir_all(&skill_dir).map_err(|e| e.to_string())?;
     
     let skill_dir = skills_dir.join(&slug);
     std::fs::create_dir_all(&skill_dir).map_err(|e| e.to_string())?;
@@ -188,8 +202,8 @@ pub async fn update_skill(slug: String, app: tauri::AppHandle) -> Result<(), Str
 
 /// 获取已安装技能列表
 #[tauri::command]
-pub fn get_installed_skills() -> Result<Vec<InstalledSkill>, String> {
-    get_installed_skills_internal()
+pub fn get_installed_skills(app: tauri::AppHandle) -> Result<Vec<InstalledSkill>, String> {
+    get_installed_skills_internal(&app)
 }
 
 /// 检查技能更新
@@ -200,12 +214,9 @@ pub async fn check_skill_updates(_app: tauri::AppHandle) -> Result<Vec<RemoteSki
 
 /// 卸载技能
 #[tauri::command]
-pub fn uninstall_skill(slug: String) -> Result<(), String> {
-    let skill_dir = dirs::config_dir()
-        .ok_or("无法找到配置目录")?
-        .join("openclaw")
-        .join("skills")
-        .join(&slug);
+pub fn uninstall_skill(slug: String, app: tauri::AppHandle) -> Result<(), String> {
+    let skills_dir = get_skills_dir(&app)?;
+    let skill_dir = skills_dir.join(&slug);
     
     if skill_dir.exists() {
         std::fs::remove_dir_all(&skill_dir)
@@ -217,11 +228,11 @@ pub fn uninstall_skill(slug: String) -> Result<(), String> {
 
 // ============ 内部辅助函数 ============
 
-fn get_installed_skills_internal() -> Result<Vec<InstalledSkill>, String> {
-    let skills_dir = dirs::config_dir()
-        .ok_or("无法找到配置目录")?
-        .join("openclaw")
-        .join("skills");
+fn get_installed_skills_internal(app: &tauri::AppHandle) -> Result<Vec<InstalledSkill>, String> {
+    let skills_dir = match get_skills_dir(app) {
+        Ok(dir) => dir,
+        Err(_) => return Ok(Vec::new()),
+    };
     
     if !skills_dir.exists() {
         return Ok(Vec::new());
@@ -249,8 +260,8 @@ fn get_installed_skills_internal() -> Result<Vec<InstalledSkill>, String> {
     Ok(skills)
 }
 
-fn get_installed_slugs() -> Vec<String> {
-    let result = get_installed_skills_internal()
+fn get_installed_slugs(app: &tauri::AppHandle) -> Vec<String> {
+    let result = get_installed_skills_internal(app)
         .unwrap_or_default()
         .iter()
         .map(|s| s.slug.clone())
