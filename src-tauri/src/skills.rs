@@ -270,32 +270,47 @@ pub fn uninstall_skill(slug: String, app: tauri::AppHandle) -> Result<(), String
 fn get_installed_skills_internal(app: &tauri::AppHandle) -> Result<Vec<InstalledSkill>, String> {
     let skills_dir = match get_skills_dir(app) {
         Ok(dir) => dir,
-        Err(_) => return Ok(Vec::new()),
+        Err(e) => {
+            println!("[Skills] ❌ 获取技能目录失败: {}", e);
+            return Ok(Vec::new());
+        }
     };
     
+    println!("[Skills] 查找已安装技能，目录: {:?}", skills_dir);
+    
     if !skills_dir.exists() {
+        println!("[Skills] ⚠️ 技能目录不存在，返回空列表");
         return Ok(Vec::new());
     }
     
     let mut skills = Vec::new();
     
-    for entry in std::fs::read_dir(&skills_dir).map_err(|e| e.to_string())? {
-        if let Ok(entry) = entry {
-            let skill_dir = entry.path();
-            if skill_dir.is_dir() {
-                let skill_file = skill_dir.join("skill.json");
-                if skill_file.exists() {
-                    if let Ok(content) = std::fs::read_to_string(&skill_file) {
-                        if let Ok(mut skill) = serde_json::from_str::<InstalledSkill>(&content) {
-                            skill.path = skill_dir.to_string_lossy().to_string();
-                            skills.push(skill);
+    match std::fs::read_dir(&skills_dir) {
+        Ok(entries) => {
+            for entry in entries.flatten() {
+                let skill_dir = entry.path();
+                if skill_dir.is_dir() {
+                    let skill_file = skill_dir.join("skill.json");
+                    println!("[Skills] 检查技能文件: {:?}", skill_file);
+                    if skill_file.exists() {
+                        if let Ok(content) = std::fs::read_to_string(&skill_file) {
+                            println!("[Skills] 读取到文件内容: {}", content);
+                            if let Ok(mut skill) = serde_json::from_str::<InstalledSkill>(&content) {
+                                skill.path = skill_dir.to_string_lossy().to_string();
+                                println!("[Skills] ✅ 加载技能: {}", skill.slug);
+                                skills.push(skill);
+                            }
                         }
                     }
                 }
             }
         }
+        Err(e) => {
+            println!("[Skills] ❌ 读取目录失败: {}", e);
+        }
     }
     
+    println!("[Skills] get_installed_skills_internal: 找到 {} 个技能", skills.len());
     Ok(skills)
 }
 
