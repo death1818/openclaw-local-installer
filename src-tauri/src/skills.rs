@@ -627,5 +627,80 @@ fn get_builtin_skills() -> Vec<RemoteSkill> {
         RemoteSkill { name: "智能问答".into(), slug: "smart-qa".into(), description: "智能问答、知识检索".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 16000, category: "热门工具".into(), tags: vec!["问答".into()], installed: false, update_available: false },
         RemoteSkill { name: "AI 语音助手".into(), slug: "ai-voice-assistant".into(), description: "语音交互、智能助手".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 14000, category: "热门工具".into(), tags: vec!["语音".into(), "AI".into()], installed: false, update_available: false },
         RemoteSkill { name: "AI 学习助手".into(), slug: "ai-learning-assistant".into(), description: "AI 辅助学习、答疑".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 13000, category: "热门工具".into(), tags: vec!["学习".into(), "AI".into()], installed: false, update_available: false },
+
+        // ========== 效率工具类 ==========
+        RemoteSkill { name: "快捷键管理".into(), slug: "hotkey-manager".into(), description: "自定义快捷键、效率提升".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 9000, category: "效率工具".into(), tags: vec!["快捷键".into()], installed: false, update_available: false },
+        RemoteSkill { name: "剪贴板管理".into(), slug: "clipboard-manager".into(), description: "剪贴板历史、多格式粘贴".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 11000, category: "效率工具".into(), tags: vec!["剪贴板".into()], installed: false, update_available: false },
+        RemoteSkill { name: "截图工具".into(), slug: "screenshot-tool".into(), description: "智能截图、标注、OCR".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 15000, category: "效率工具".into(), tags: vec!["截图".into()], installed: false, update_available: false },
+        RemoteSkill { name: "窗口管理".into(), slug: "window-manager".into(), description: "窗口布局、分屏管理".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 9500, category: "效率工具".into(), tags: vec!["窗口".into()], installed: false, update_available: false },
+        RemoteSkill { name: "启动器".into(), slug: "app-launcher".into(), description: "应用快速启动、搜索".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 13000, category: "效率工具".into(), tags: vec!["启动".into()], installed: false, update_available: false },
+        RemoteSkill { name: "待办清单".into(), slug: "todo-list".into(), description: "任务管理、提醒通知".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 14000, category: "效率工具".into(), tags: vec!["待办".into()], installed: false, update_available: false },
+        RemoteSkill { name: "番茄钟".into(), slug: "pomodoro-timer".into(), description: "番茄工作法计时器".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 8500, category: "效率工具".into(), tags: vec!["番茄".into()], installed: false, update_available: false },
+
+        // ========== 娱乐休闲类 ==========
+        RemoteSkill { name: "音乐播放".into(), slug: "music-player".into(), description: "音乐播放、歌词显示".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 18000, category: "娱乐休闲".into(), tags: vec!["音乐".into()], installed: false, update_available: false },
+        RemoteSkill { name: "视频播放".into(), slug: "video-player".into(), description: "视频播放、格式支持".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 16000, category: "娱乐休闲".into(), tags: vec!["视频".into()], installed: false, update_available: false },
+        RemoteSkill { name: "游戏加速".into(), slug: "game-booster".into(), description: "游戏优化、延迟降低".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 12000, category: "娱乐休闲".into(), tags: vec!["游戏".into()], installed: false, update_available: false },
+        RemoteSkill { name: "直播助手".into(), slug: "livestream-assistant".into(), description: "直播推流、弹幕互动".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 9500, category: "娱乐休闲".into(), tags: vec!["直播".into()], installed: false, update_available: false },
+        RemoteSkill { name: "小说阅读".into(), slug: "novel-reader".into(), description: "小说阅读、离线缓存".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 11000, category: "娱乐休闲".into(), tags: vec!["小说".into()], installed: false, update_available: false },
+        RemoteSkill { name: "表情包制作".into(), slug: "meme-generator".into(), description: "表情包制作、模板套用".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 14000, category: "娱乐休闲".into(), tags: vec!["表情包".into()], installed: false, update_available: false },
+
+        // ========== 社交互动类 ==========
+        RemoteSkill { name: "朋友圈管理".into(), slug: "moments-manager".into(), description: "朋友圈发布、互动管理".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 13000, category: "社交互动".into(), tags: vec!["朋友圈".into()], installed: false, update_available: false },
+        RemoteSkill { name: "微博助手".into(), slug: "weibo-assistant".into(), description: "微博发布、互动监控".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 11000, category: "社交互动".into(), tags: vec!["微博".into()], installed: false, update_available: false },
+        RemoteSkill { name: "小红书助手".into(), slug: "xiaohongshu-assistant".into(), description: "小红书内容发布、数据分析".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 12500, category: "社交互动".into(), tags: vec!["小红书".into()], installed: false, update_available: false },
+        RemoteSkill { name: "抖音助手".into(), slug: "douyin-assistant".into(), description: "抖音视频发布、数据分析".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 15000, category: "社交互动".into(), tags: vec!["抖音".into()], installed: false, update_available: false },
+        RemoteSkill { name: "B站助手".into(), slug: "bilibili-assistant".into(), description: "B站视频发布、互动管理".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 14000, category: "社交互动".into(), tags: vec!["B站".into()], installed: false, update_available: false },
+        RemoteSkill { name: "知乎助手".into(), slug: "zhihu-assistant".into(), description: "知乎问答、专栏发布".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 9000, category: "社交互动".into(), tags: vec!["知乎".into()], installed: false, update_available: false },
+
+        // ========== 电商工具类 ==========
+        RemoteSkill { name: "淘宝助手".into(), slug: "taobao-assistant".into(), description: "淘宝店铺管理、订单处理".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 16000, category: "电商工具".into(), tags: vec!["淘宝".into()], installed: false, update_available: false },
+        RemoteSkill { name: "京东助手".into(), slug: "jd-assistant".into(), description: "京东店铺运营、数据分析".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 12000, category: "电商工具".into(), tags: vec!["京东".into()], installed: false, update_available: false },
+        RemoteSkill { name: "拼多多助手".into(), slug: "pdd-assistant".into(), description: "拼多多运营、推广管理".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 11000, category: "电商工具".into(), tags: vec!["拼多多".into()], installed: false, update_available: false },
+        RemoteSkill { name: "抖音电商".into(), slug: "douyin-ecommerce".into(), description: "抖音小店运营、直播带货".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 14000, category: "电商工具".into(), tags: vec!["抖音".into(), "电商".into()], installed: false, update_available: false },
+        RemoteSkill { name: "跨境出海".into(), slug: "cross-border".into(), description: "跨境电商、海外市场".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 8000, category: "电商工具".into(), tags: vec!["跨境".into()], installed: false, update_available: false },
+
+        // ========== 营销推广类 ==========
+        RemoteSkill { name: "营销文案".into(), slug: "marketing-copy".into(), description: "营销文案生成、创意策划".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 15000, category: "营销推广".into(), tags: vec!["营销".into(), "文案".into()], installed: false, update_available: false },
+        RemoteSkill { name: "海报设计".into(), slug: "poster-design".into(), description: "营销海报设计、模板套用".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 13000, category: "营销推广".into(), tags: vec!["海报".into()], installed: false, update_available: false },
+        RemoteSkill { name: "活动策划".into(), slug: "event-planning".into(), description: "营销活动策划、执行跟踪".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 9000, category: "营销推广".into(), tags: vec!["活动".into()], installed: false, update_available: false },
+        RemoteSkill { name: "SEO 优化".into(), slug: "seo-optimizer".into(), description: "SEO 关键词优化、排名提升".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 12000, category: "营销推广".into(), tags: vec!["SEO".into()], installed: false, update_available: false },
+        RemoteSkill { name: "社群运营".into(), slug: "community-operation".into(), description: "社群管理、活动运营".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 11500, category: "营销推广".into(), tags: vec!["社群".into()], installed: false, update_available: false },
+
+        // ========== 财务管理类 ==========
+        RemoteSkill { name: "记账助手".into(), slug: "accounting-helper".into(), description: "日常记账、收支统计".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 14000, category: "财务管理".into(), tags: vec!["记账".into()], installed: false, update_available: false },
+        RemoteSkill { name: "发票管理".into(), slug: "invoice-manager".into(), description: "发票识别、报销管理".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 9000, category: "财务管理".into(), tags: vec!["发票".into()], installed: false, update_available: false },
+        RemoteSkill { name: "投资分析".into(), slug: "investment-analysis".into(), description: "投资组合分析、风险评估".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 8000, category: "财务管理".into(), tags: vec!["投资".into()], installed: false, update_available: false },
+
+        // ========== 人力资源类 ==========
+        RemoteSkill { name: "招聘管理".into(), slug: "recruitment-manager".into(), description: "招聘流程管理、简历筛选".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 8000, category: "人力资源".into(), tags: vec!["招聘".into()], installed: false, update_available: false },
+        RemoteSkill { name: "考勤管理".into(), slug: "attendance-manager".into(), description: "员工考勤、请假审批".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 7500, category: "人力资源".into(), tags: vec!["考勤".into()], installed: false, update_available: false },
+        RemoteSkill { name: "绩效评估".into(), slug: "performance-evaluation".into(), description: "绩效考核、目标管理".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 6500, category: "人力资源".into(), tags: vec!["绩效".into()], installed: false, update_available: false },
+
+        // ========== 项目管理类 ==========
+        RemoteSkill { name: "项目规划".into(), slug: "project-planning".into(), description: "项目计划、里程碑管理".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 10000, category: "项目管理".into(), tags: vec!["项目".into()], installed: false, update_available: false },
+        RemoteSkill { name: "任务看板".into(), slug: "task-board".into(), description: "看板管理、任务流转".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 9000, category: "项目管理".into(), tags: vec!["看板".into()], installed: false, update_available: false },
+        RemoteSkill { name: "甘特图".into(), slug: "gantt-chart".into(), description: "甘特图、进度可视化".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 8500, category: "项目管理".into(), tags: vec!["甘特图".into()], installed: false, update_available: false },
+
+        // ========== 教育学习类 ==========
+        RemoteSkill { name: "在线课程".into(), slug: "online-course".into(), description: "在线学习、课程管理".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 12000, category: "教育学习".into(), tags: vec!["课程".into()], installed: false, update_available: false },
+        RemoteSkill { name: "题库刷题".into(), slug: "question-bank".into(), description: "考试刷题、错题本".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 11000, category: "教育学习".into(), tags: vec!["题库".into()], installed: false, update_available: false },
+        RemoteSkill { name: "英语学习".into(), slug: "english-learning".into(), description: "英语单词、口语练习".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 15000, category: "教育学习".into(), tags: vec!["英语".into()], installed: false, update_available: false },
+        RemoteSkill { name: "编程学习".into(), slug: "programming-learning".into(), description: "编程教程、实战练习".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 13000, category: "教育学习".into(), tags: vec!["编程".into()], installed: false, update_available: false },
+
+        // ========== 健康医疗类 ==========
+        RemoteSkill { name: "健康打卡".into(), slug: "health-checkin".into(), description: "每日健康记录、习惯养成".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 11000, category: "健康医疗".into(), tags: vec!["健康".into()], installed: false, update_available: false },
+        RemoteSkill { name: "运动计划".into(), slug: "exercise-plan".into(), description: "运动计划制定、进度跟踪".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 9500, category: "健康医疗".into(), tags: vec!["运动".into()], installed: false, update_available: false },
+        RemoteSkill { name: "饮食记录".into(), slug: "diet-record".into(), description: "饮食日记、营养分析".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 8000, category: "健康医疗".into(), tags: vec!["饮食".into()], installed: false, update_available: false },
+
+        // ========== 更多工具类 ==========
+        RemoteSkill { name: "单位换算".into(), slug: "unit-converter".into(), description: "长度、重量、温度等单位换算".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 7000, category: "实用工具".into(), tags: vec!["换算".into()], installed: false, update_available: false },
+        RemoteSkill { name: "时区转换".into(), slug: "timezone-converter".into(), description: "世界时钟、时区转换".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 6500, category: "实用工具".into(), tags: vec!["时区".into()], installed: false, update_available: false },
+        RemoteSkill { name: "号码生成".into(), slug: "number-generator".into(), description: "随机号码、序列号生成".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 5500, category: "实用工具".into(), tags: vec!["号码".into()], installed: false, update_available: false },
+        RemoteSkill { name: "二维码生成".into(), slug: "qrcode-gen-v2".into(), description: "二维码生成、解析、美化".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 10000, category: "实用工具".into(), tags: vec!["二维码".into()], installed: false, update_available: false },
+        RemoteSkill { name: "条形码生成".into(), slug: "barcode-gen".into(), description: "条形码生成、识别".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 5000, category: "实用工具".into(), tags: vec!["条形码".into()], installed: false, update_available: false },
+        RemoteSkill { name: "计算器".into(), slug: "calculator".into(), description: "科学计算器、汇率计算".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 9000, category: "实用工具".into(), tags: vec!["计算".into()], installed: false, update_available: false },
+        RemoteSkill { name: "日历工具".into(), slug: "calendar-tool".into(), description: "日历查看、节假日查询".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 8000, category: "实用工具".into(), tags: vec!["日历".into()], installed: false, update_available: false },
+        RemoteSkill { name: "倒计时".into(), slug: "countdown".into(), description: "倒计时、纪念日提醒".into(), version: "1.0.0".into(), author: "OpenClaw".into(), downloads: 7500, category: "实用工具".into(), tags: vec!["倒计时".into()], installed: false, update_available: false },
     ]
 }

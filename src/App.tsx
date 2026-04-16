@@ -186,11 +186,21 @@ function App() {
   const [dockerMode, setDockerMode] = useState(false) // Docker 部署模式
   
   // 聊天界面状态
-  const [chatMessages, setChatMessages] = useState<Array<{id: string, role: 'user' | 'assistant', content: string, timestamp: Date, attachments?: string}>>([])
+  const [chatMessages, setChatMessages] = useState<Array<{id: string, role: 'user' | 'assistant', content: string, timestamp: Date, attachments?: string}>>(() => {
+    const saved = localStorage.getItem('openclaw_chat_messages')
+    if (saved) {
+      try {
+        return JSON.parse(saved).map((m: any) => ({...m, timestamp: new Date(m.timestamp)}))
+      } catch { return [] }
+    }
+    return []
+  })
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
   const [chatModels, setChatModels] = useState<Array<{name: string, size?: number}>>([])
-  const [chatSelectedModel, setChatSelectedModel] = useState('')
+  const [chatSelectedModel, setChatSelectedModel] = useState(() => {
+    return localStorage.getItem('openclaw_selected_model') || ''
+  })
   const [chatConnected, setChatConnected] = useState(false)
   const [chatAttachedFile, setChatAttachedFile] = useState<string>('')
   const chatMessagesEndRef = useRef<HTMLDivElement>(null)
@@ -208,6 +218,18 @@ function App() {
   useEffect(() => {
     scrollToChatBottom()
   }, [chatMessages, chatLoading])
+  
+  // 持久化聊天消息
+  useEffect(() => {
+    localStorage.setItem('openclaw_chat_messages', JSON.stringify(chatMessages))
+  }, [chatMessages])
+  
+  // 持久化选择的模型
+  useEffect(() => {
+    if (chatSelectedModel) {
+      localStorage.setItem('openclaw_selected_model', chatSelectedModel)
+    }
+  }, [chatSelectedModel])
   
   // 模型训练状态
   const [trainingCategory, setTrainingCategory] = useState<string>('')
@@ -1929,6 +1951,26 @@ function App() {
             try {
               setGatewayStatus('starting')
               setError('')
+              
+              // 自动安装默认技能 - 记忆系统优先
+              const defaultSkills = [
+                'memory-tdai',           // 记忆系统（核心必装）
+                'openclaw-weixin',       // 微信助手
+                'ddingtalk',             // 钉钉助手
+                'wecom',                 // 企业微信助手
+                'lightclawbot',          // 机器人框架
+                'openclaw-plugin-yuanbao' // 元宝Bot
+              ]
+              for (const slug of defaultSkills) {
+                try {
+                  console.log(`正在安装核心技能: ${slug}`)
+                  await invoke('install_skill', { slug })
+                  console.log(`核心技能 ${slug} 安装成功`)
+                } catch (e) {
+                  console.warn(`安装技能 ${slug} 失败:`, e)
+                }
+              }
+              
               const result = await invoke<string>('deploy_docker')
               setDockerMode(true)
               localStorage.setItem('openclaw_docker_deployed', 'true')
@@ -1947,6 +1989,9 @@ function App() {
                 await new Promise(resolve => setTimeout(resolve, 2000))
               }
               if (gatewayReady) {
+                // 刷新已安装技能列表
+                const skills = await invoke<InstalledSkill[]>('get_installed_skills')
+                setInstalledSkills(skills)
                 setStep('chat')
               }
             } catch (err) {
