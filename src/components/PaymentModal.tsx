@@ -105,29 +105,14 @@ export function PaymentModal({ isOpen, onClose, onPaid }: PaymentModalProps) {
       if (data.success && data.valid) {
         onPaid(licenseCode.toUpperCase())
       } else {
+        // 显示服务器返回的错误消息
         setError(data.message || '授权码无效')
       }
     } catch (err) {
-      // 离线验证
-      const code = licenseCode.toUpperCase()
-      if (validateLicenseCodeOffline(code)) {
-        onPaid(code)
-      } else {
-        setError('授权码无效')
-      }
+      console.error('验证授权码失败:', err)
+      setError('网络错误，请检查网络连接后重试')
     }
     setLoading(false)
-  }
-
-  // 离线验证授权码
-  const validateLicenseCodeOffline = (code: string): boolean => {
-    if (!code || !code.startsWith('OPENCLAW-')) return false
-    
-    const parts = code.replace('OPENCLAW-', '').split('-')
-    if (parts.length !== 3 || parts.some(p => p.length !== 4)) return false
-    
-    const checksum = parts.join('').split('').reduce((sum, c) => sum + c.charCodeAt(0), 0)
-    return checksum % 97 === 0 || checksum % 89 === 0 || checksum % 73 === 0
   }
 
   if (!isOpen) return null
