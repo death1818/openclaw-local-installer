@@ -1122,18 +1122,33 @@ pub async fn configure_openclaw(model_name: String, is_docker: bool, app: tauri:
 # 由安装器自动生成
 
 # 默认模型配置
-model: {}
+model: ollama/{model}
 
-# Ollama 配置
-ollama:
-  url: {}
-  contextTokens: 24576
+# 模型提供商配置
+models:
+  providers:
+    ollama:
+      baseUrl: "{ollama_url}"
+      api: ollama
+      models:
+        - id: "{model}"
+          name: "{model}"
+          reasoning: false
+          input:
+            - text
+          cost:
+            input: 0
+            output: 0
+            cacheRead: 0
+            cacheWrite: 0
+          contextWindow: 128000
+          maxTokens: 8192
 
 # Gateway 配置
 gateway:
   port: 18789
   host: 0.0.0.0
-"#, model_name, ollama_url);
+"#, model = model_name, ollama_url = ollama_url);
     
     // 尝试多个配置目录（按优先级）
     let config_paths = vec![
