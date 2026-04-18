@@ -1806,15 +1806,18 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         
         // 使用 Docker Hub 公开镜像
         // 尝试多个镜像源（优先官方完整镜像）
-        // ===== 镜像准备：pull 或 build =====
+        // ===== 镜像准备 =====
         let target_image = "chenlong999988/openclaw:v2.6.89";
         let image_name = target_image;
         let mut pull_success = false;
         
-        // 步骤1: 检查本地是否已有镜像
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        
+        // 步骤1: 检查本地镜像
         app.emit("model-progress", "[3/6] 检查本地镜像...".to_string()).ok();
         let check_local = Command::new("docker")
             .args(&["images", "-q", target_image])
+            .creation_flags(CREATE_NO_WINDOW)
             .output();
         
         if let Ok(output) = &check_local {
@@ -1826,42 +1829,47 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
             }
         }
         
-        // 步骤2: 如果本地没有，尝试拉取
+        // 步骤2: 本地构建镜像（不依赖远程拉取）
         if !pull_success {
-            app.emit("model-progress", format!("[3/6] 拉取镜像: {}...", target_image)).ok();
-            app.emit("model-progress", "提示: Docker Hub 国内可能较慢，请耐心等待...".to_string()).ok();
-            
-            let pull_result = Command::new("docker")
-                .args(&["pull", target_image])
-                .status(); // 用 status() 等待完成
-            
-            if let Ok(status) = pull_result {
-                if status.success() {
-                    pull_success = true;
-                    app.emit("model-progress", "✅ 镜像拉取成功".to_string()).ok();
-                }
-            }
-        }
-        
-        // 步骤3: 如果拉取失败，本地构建
-        if !pull_success {
-            app.emit("model-progress", "拉取失败，开始本地构建...".to_string()).ok();
+            app.emit("model-progress", "正在构建 Docker 镜像（首次需要几分钟）...".to_string()).ok();
             
             let temp_dir = std::env::temp_dir();
             let build_dir = temp_dir.join("openclaw-build");
             let _ = std::fs::create_dir_all(&build_dir);
             
-            let dockerfile = "FROM node:22-bookworm-slim\nENV TZ=Asia/Shanghai\nRUN apt-get update && apt-get install -y curl git python3 make g++ && rm -rf /var/lib/apt/lists/*\nRUN npm install -g openclaw@latest\nEXPOSE 18789\nCMD [\"/usr/local/bin/openclaw\", \"gateway\", \"run\", \"--bind\", \"lan\", \"--allow-unconfigured\"]\n";
-            std::fs::write(build_dir.join("Dockerfile"), dockerfile).ok();
+            // Dockerfile 内容
+            let dockerfile_content = r#"FROM node:22-bookworm-slim
+ENV TZ=Asia/Shanghai
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends curl git ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN git config --global url."https://github.com/".insteadOf ssh://git@github.com/
+RUN npm install -g openclaw@latest --ignore-scripts || npm install -g openclaw@latest
+RUN mkdir -p /root/.openclaw
+EXPOSE 18789
+ENV OLLAMA_HOST=host.docker.internal:11434
+CMD ["/usr/local/bin/openclaw", "gateway", "run", "--bind", "lan", "--port", "18789", "--allow-unconfigured"]
+"#;
+            std::fs::write(build_dir.join("Dockerfile"), dockerfile_content).ok();
+            
+            app.emit("model-progress", "构建中... 请等待".to_string()).ok();
             
             let build_result = Command::new("docker")
                 .args(&["build", "-t", target_image, &build_dir.to_string_lossy()])
-                .status();
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
             
-            if let Ok(status) = build_result {
-                if status.success() {
-                    pull_success = true;
-                    app.emit("model-progress", "✅ 镜像构建成功".to_string()).ok();
+            match build_result {
+                Ok(output) => {
+                    if output.status.success() {
+                        pull_success = true;
+                        app.emit("model-progress", "✅ 镜像构建成功".to_string()).ok();
+                    } else {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        app.emit("model-progress", format!("构建失败: {}", &stderr[..200.min(stderr.len())])).ok();
+                    }
+                }
+                Err(e) => {
+                    app.emit("model-progress", format!("构建出错: {}", e)).ok();
                 }
             }
         }
@@ -1998,6 +2006,7 @@ providers:
         for old_name in &old_container_names {
             let _ = Command::new("docker")
                 .args(&["rm", "-f", old_name])
+                .creation_flags(CREATE_NO_WINDOW)
                 .output();
         }
         
@@ -2021,6 +2030,7 @@ providers:
                 "--port", "18789",
                 "--allow-unconfigured",
             ])
+            .creation_flags(CREATE_NO_WINDOW)
             .output();
         
         match run_result {
@@ -2042,6 +2052,7 @@ providers:
                     // 在容器内创建配置目录
                     let _ = Command::new("docker")
                         .args(&["exec", "openclaw-yuanhuiwang", "mkdir", "-p", "/home/node/.openclaw"])
+                        .creation_flags(CREATE_NO_WINDOW)
                         .output();
                     
                     // 配置已通过volume挂载自动同步，无需额外操作
@@ -2052,6 +2063,7 @@ providers:
                     // 重启容器使配置生效
                     let _ = Command::new("docker")
                         .args(&["restart", "openclaw-yuanhuiwang"])
+                        .creation_flags(CREATE_NO_WINDOW)
                         .output();
                     
                     std::thread::sleep(std::time::Duration::from_secs(3));
