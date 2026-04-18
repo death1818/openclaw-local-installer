@@ -2468,70 +2468,56 @@ pub async fn get_gateway_models() -> Result<Vec<GatewayModel>, String> {
 /// 获取微信登录二维码 URL
 #[tauri::command]
 pub async fn run_wechat_login() -> Result<String, String> {
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        
-        // 调用 openclaw channels login 获取二维码 URL
-        let result = Command::new("cmd")
-            .args(&["/C", "openclaw channels login --channel openclaw-weixin --json 2>&1"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output();
-        
-        match result {
-            Ok(output) => {
-                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                let full_output = format!("{}\n{}", stdout, stderr);
-                
-                // 尝试从输出中提取 URL (https://login.weixin.qq.com/...)
-                for line in full_output.lines() {
-                    if line.contains("https://login.weixin.qq.com") || line.contains("https://login.wx.qq.com") {
-                        let url = line.trim();
-                        // 提取纯 URL
-                        if let Some(start) = url.find("https://") {
-                            let end = url[start..].find(|c: char| c.is_whitespace() || c == '\"' || c == '\'').unwrap_or(url[start..].len());
-                            return Ok(url[start..start+end].to_string());
-                        }
-                    }
-                }
-                
-                // 如果没找到 URL，返回原始输出让前端显示
-                if full_output.trim().is_empty() {
-                    Err("openclaw 命令未找到或未安装。请先确保 OpenClaw 已安装。\n\n安装方法：npm install -g openclaw".to_string())
-                } else {
-                    // 尝试另一种方式：直接用 curl 调用 Gateway API
-                    Err(format!("未获取到二维码URL，请手动运行：\nopenclaw channels login --channel openclaw-weixin\n\n输出: {}", &full_output[..200.min(full_output.len())]))
-                }
-            }
-            Err(e) => Err(format!("执行失败: {}", e))
-        }
-    }
+    // 先检查 Gateway 是否运行
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|e| e.to_string())?;
     
-    #[cfg(not(target_os = "windows"))]
-    {
-        let result = Command::new("openclaw")
-            .args(&["channels", "login", "--channel", "openclaw-weixin", "--json"])
-            .output();
-        
-        match result {
-            Ok(output) => {
-                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-                if stdout.contains("https://") {
-                    for line in stdout.lines() {
-                        if line.contains("https://login.weixin.qq.com") || line.contains("https://login.wx.qq.com") {
-                            let url = line.trim();
-                            if let Some(start) = url.find("https://") {
-                                let end = url[start..].find(|c: char| c.is_whitespace()).unwrap_or(url[start..].len());
-                                return Ok(url[start..start+end].to_string());
-                            }
-                        }
-                    }
+    // 尝试调用 Gateway 的 channels API
+    let gateway_url = "http://localhost:18789/api/channels/openclaw-weixin/login/start";
+    
+    let response = client
+        .post(gateway_url)
+        .send()
+        .await;
+    
+    match response {
+        Ok(res) if res.status().is_success() => {
+            if let Ok(json) = res.json::<serde_json::Value>().await {
+                // 尝试从响应中提取二维码 URL
+                if let Some(qr_url) = json.get("qrDataUrl").and_then(|v| v.as_str()) {
+                    return Ok(qr_url.to_string());
                 }
-                Ok(stdout)
+                if let Some(qr_url) = json.get("qrcodeUrl").and_then(|v| v.as_str()) {
+                    return Ok(qr_url.to_string());
+                }
+                if let Some(qr_url) = json.get("url").and_then(|v| v.as_str()) {
+                    return Ok(qr_url.to_string());
+                }
             }
-            Err(e) => Err(format!("执行失败: {}", e))
+            Err("Gateway 返回的数据中未找到二维码 URL".to_string())
+        }
+        Ok(res) => {
+            let status = res.status();
+            if status.as_u16() == 404 {
+                Err("微信插件未安装或未启用。请先在技能管理中安装 openclaw-weixin".to_string())
+            } else if status.as_u16() == 503 {
+                Err("Gateway 正在启动，请稍后重试".to_string())
+            } else {
+                Err(format!("Gateway 返回错误: {}", status))
+            }
+        }
+        Err(e) => {
+            // Gateway 未运行，提示用户
+            Err(format!(
+                "OpenClaw Gateway 未运行。\n\n\
+                请先启动 Gateway：\n\
+                1. 在启动器页面点击 '启动 OpenClaw'\n\
+                或\n\
+                2. 运行命令: openclaw gateway run\n\n\
+                详细错误: {}", e
+            ))
         }
     }
 }
