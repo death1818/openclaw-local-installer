@@ -1818,7 +1818,8 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
             .output();
         
         if let Ok(output) = &check_local {
-            let id = String::from_utf8_lossy(&output.stdout).trim();
+            let id_raw = String::from_utf8_lossy(&output.stdout);
+            let id = id_raw.trim();
             if !id.is_empty() {
                 app.emit("model-progress", format!("✅ 本地镜像已存在: {}", &id[..12.min(id.len())])).ok();
                 pull_success = true;
