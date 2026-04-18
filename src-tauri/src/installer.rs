@@ -1810,45 +1810,50 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         let target_image = "chenlong999988/openclaw:v2.6.89";
         let image_name = target_image;
         
-        // 删除旧的本地镜像缓存，确保拉取最新
-        app.emit("model-progress", "[3/6] 清理旧镜像缓存...".to_string()).ok();
-        let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", "docker rmi -f chenlong999988/openclaw:latest 2>$null; docker rmi -f chenlong999988/openclaw:v2.6.89 2>$null"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output();
-        
-        // 强制拉取指定版本
+        // 强制拉取指定版本（使用重定向捕获输出）
         app.emit("model-progress", format!("[3/6] 拉取镜像: {}...", target_image)).ok();
         let mut pull_success = false;
         
+        // 方式1: 直接运行 docker pull，通过退出码判断
         let pull_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", &format!("docker pull {}", target_image)])
+            .args(&["-NoProfile", "-Command", &format!("docker pull {} 2>&1 | Out-String", target_image)])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         
-        match pull_result {
+        match &pull_result {
             Ok(output) => {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 let stderr = String::from_utf8_lossy(&output.stderr);
+                app.emit("model-progress", format!("拉取结果: exit={}, stdout=[{}]", output.status.code().unwrap_or(-1), &stdout[..stdout.len().min(200)])).ok();
                 
-                // 成功标志：镜像已存在、下载完成、或状态更新
-                let success = output.status.success() || 
-                    stdout.contains("Digest") || 
-                    stdout.contains("Downloaded") || 
-                    stdout.contains("sha256") ||
-                    stdout.contains("up to date") ||
-                    stdout.contains("Image is up to date") ||
-                    stdout.contains("Pull complete");
-                
-                if success {
+                if output.status.success() {
                     pull_success = true;
                     app.emit("model-progress", "✅ 镜像拉取成功".to_string()).ok();
                 } else {
-                    app.emit("model-progress", format!("⚠️ 拉取输出: stdout={}, stderr={}", stdout, stderr)).ok();
+                    app.emit("model-progress", format!("⚠️ 拉取失败: stderr={}", &stderr[..stderr.len().min(200)])).ok();
                 }
             }
             Err(e) => {
-                app.emit("model-progress", format!("❌ 拉取失败: {}", e)).ok();
+                app.emit("model-progress", format!("❌ 命令执行失败: {}", e)).ok();
+            }
+        }
+        
+        // 方式2: 如果 pull 退出码不对，检查镜像是否实际已存在
+        if !pull_success {
+            app.emit("model-progress", "检查镜像是否已存在...".to_string()).ok();
+            let check_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                .args(&["-NoProfile", "-Command", &format!("docker images -q {} 2>$null", target_image)])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
+            
+            if let Ok(output) = check_result {
+                let image_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !image_id.is_empty() {
+                    pull_success = true;
+                    app.emit("model-progress", format!("✅ 镜像已存在: {}", &image_id[..12.min(image_id.len())])).ok();
+                } else {
+                    app.emit("model-progress", "❌ 镜像不存在".to_string()).ok();
+                }
             }
         }
         
