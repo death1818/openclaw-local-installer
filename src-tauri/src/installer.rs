@@ -1807,9 +1807,10 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         // 使用 Docker Hub 公开镜像
         // 尝试多个镜像源（优先官方完整镜像）
         let image_sources = vec![
-            ("官方完整镜像", "ghcr.io/openclaw/openclaw:latest"),
-            ("自托管镜像", "ghcr.io/death1818/openclaw:latest"),
+            ("缘辉旺定制镜像(支持OLLAMA_HOST)", "chenlong999988/openclaw:v2.6.79"),
             ("Docker Hub镜像", "chenlong999988/openclaw:latest"),
+            ("自托管镜像", "ghcr.io/death1818/openclaw:latest"),
+            ("官方镜像", "ghcr.io/openclaw/openclaw:latest"),
         ];
         
         let mut image_name = "";
@@ -1957,16 +1958,20 @@ gateway:
     required: false
     token: ""
 
-# 本地 Ollama 配置 - Docker模式下连接宿主机
-ollama:
-  url: "http://host.docker.internal:11434"
-  contextTokens: 24576
+# 模型提供商配置 - Docker模式下连接宿主机
+models:
+  providers:
+    ollama:
+      baseUrl: "http://host.docker.internal:11434"
+      api: ollama
+      models:
+        - id: phi3.5
+          name: phi3.5
 
-# 模型提供商 - 仅本地
+# 本地模式
 providers:
   local:
     type: ollama
-    # 强制使用本地模型
     preferLocal: true
 "#;
         
