@@ -3194,7 +3194,7 @@ function App() {
                   <div className="flex items-center gap-2">
                     <span className="text-xl">💬</span>
                     <span className="font-medium">微信助手</span>
-                    <a href="https://github.com/TencentCloud-Lighthouse/openclaw-weixin" target="_blank" className="text-xs text-blue-500 hover:underline">📖 教程</a>
+                    <a href="https://github.com/Tencent/openclaw-weixin" target="_blank" className="text-xs text-blue-500 hover:underline">📖 教程</a>
                   </div>
                   <label className="flex items-center gap-2">
                     <input
@@ -3210,8 +3210,8 @@ function App() {
                 <button
                   onClick={async () => {
                     try {
-                      await invoke('run_wechat_login')
-                      alert('请在终端查看二维码并扫码')
+                      const result = await invoke<string>('run_wechat_login')
+                      alert(result || '请在终端查看二维码并扫码')
                     } catch (err) {
                       alert('启动登录失败: ' + err)
                     }
@@ -3228,7 +3228,7 @@ function App() {
                   <div className="flex items-center gap-2">
                     <span className="text-xl">🔔</span>
                     <span className="font-medium">钉钉助手</span>
-                    <a href="https://github.com/largezhou/ddingtalk" target="_blank" className="text-xs text-blue-500 hover:underline">📖 教程</a>
+                    <a href="https://github.com/largezhou/openclaw-dingtalk" target="_blank" className="text-xs text-blue-500 hover:underline">📖 教程</a>
                   </div>
                   <label className="flex items-center gap-2">
                     <input
@@ -3321,7 +3321,7 @@ function App() {
                   <div className="flex items-center gap-2">
                     <span className="text-xl">🤖</span>
                     <span className="font-medium">元宝BOT</span>
-                    <a href="https://github.com/TencentCloud-Lighthouse/openclaw-plugin-yuanbao" target="_blank" className="text-xs text-blue-500 hover:underline">📖 教程</a>
+                    <a href="https://docs.openclaw.ai" target="_blank" className="text-xs text-blue-500 hover:underline">📖 教程</a>
                   </div>
                   <label className="flex items-center gap-2">
                     <input

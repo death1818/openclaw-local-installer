@@ -2468,31 +2468,16 @@ pub async fn get_gateway_models() -> Result<Vec<GatewayModel>, String> {
 /// 运行微信扫码登录
 #[tauri::command]
 pub async fn run_wechat_login() -> Result<String, String> {
+    // 在Windows上需要弹出终端窗口显示二维码
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        
+        // 使用 start 命令打开新终端窗口显示二维码
         let result = Command::new("cmd")
-            .args(&["/C", "openclaw channels login --channel openclaw-weixin"])
-            .creation_flags(CREATE_NO_WINDOW)
+            .args(&["/C", "start cmd /K openclaw channels login --channel openclaw-weixin"])
             .output();
         
         match result {
-            Ok(output) => {
-                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-                if output.status.success() {
-                    Ok(stdout)
-                } else {
-                    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    // 如果命令本身不存在，给出友好提示
-                    if stderr.contains("not found") || stdout.contains("not found") || stdout.contains("not recognized") {
-                        Err("openclaw 命令未找到，请先确保 OpenClaw 已安装并重启".to_string())
-                    } else {
-                        Ok(format!("{}\n{}", stdout, stderr))
-                    }
-                }
-            }
+            Ok(_) => Ok("已打开终端窗口，请查看二维码并扫码登录".to_string()),
             Err(e) => Err(format!("执行失败: {}", e))
         }
     }
@@ -2506,12 +2491,7 @@ pub async fn run_wechat_login() -> Result<String, String> {
         match result {
             Ok(output) => {
                 let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-                if output.status.success() {
-                    Ok(stdout)
-                } else {
-                    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    Ok(format!("{}\n{}", stdout, stderr))
-                }
+                Ok(stdout)
             }
             Err(e) => Err(format!("执行失败: {}", e))
         }
