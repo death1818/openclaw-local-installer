@@ -68,9 +68,8 @@ jobs:
             ${{ env.IMAGE_NAME }}:latest
             ghcr.io/death1818/openclaw:${{ steps.tag.outputs.TAG }}
             ghcr.io/death1818/openclaw:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
+          no-cache: true
 
       - name: Output image info
         run: |
