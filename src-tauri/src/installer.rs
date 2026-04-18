@@ -2536,8 +2536,30 @@ pub async fn send_chat_message(
     }
     
     // 如果所有 Gateway 端点都失败，尝试直接调用 Ollama
+    // 先获取 Ollama 实际存在的模型
+    let actual_model = model.clone();
+    if let Ok(res) = client.get("http://localhost:11434/api/tags").send().await {
+        if res.status().is_success() {
+            if let Ok(json) = res.json::<serde_json::Value>().await {
+                if let Some(models) = json.get("models").and_then(|m| m.as_array()) {
+                    // 检查请求的模型是否存在
+                    let model_exists = models.iter().any(|m| {
+                        m.get("name").and_then(|n| n.as_str()).map(|n| n == model).unwrap_or(false)
+                    });
+                    
+                    // 如果不存在，用第一个可用模型
+                    if !model_exists && models.first().is_some() {
+                        if let Some(first_model) = models.first().and_then(|m| m.get("name")).and_then(|n| n.as_str()) {
+                            actual_model = first_model.to_string();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
     let ollama_request = serde_json::json!({
-        "model": model,
+        "model": actual_model,
         "messages": messages,
         "stream": false
     });

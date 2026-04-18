@@ -2784,7 +2784,9 @@ function App() {
           const models = await invoke<Array<{name: string, size?: number}>>('get_gateway_models')
           setChatModels(models)
           if (models.length > 0 && !chatSelectedModel) {
-            setChatSelectedModel(models[0].name)
+            // 优先选择 phi3.5，否则用第一个
+            const phi = models.find(m => m.name.includes('phi3'));
+            setChatSelectedModel(phi ? phi.name : models[0].name);
           }
           return // 成功则退出
         }
