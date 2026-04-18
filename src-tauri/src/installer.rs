@@ -2471,13 +2471,18 @@ pub async fn run_wechat_login() -> Result<String, String> {
     // 在Windows上需要弹出终端窗口显示二维码
     #[cfg(target_os = "windows")]
     {
-        // 使用 start 命令打开新终端窗口显示二维码
-        let result = Command::new("cmd")
-            .args(&["/C", "start cmd /K openclaw channels login --channel openclaw-weixin"])
-            .output();
+        use std::os::windows::process::CommandExt;
+        
+        // 使用 PowerShell Start-Process 打开可见的终端窗口
+        let result = Command::new("powershell")
+            .args(&[
+                "-Command",
+                "Start-Process cmd -ArgumentList '/K openclaw channels login --channel openclaw-weixin' -WindowStyle Normal -Wait:$false"
+            ])
+            .spawn(); // 用 spawn 不阻塞
         
         match result {
-            Ok(_) => Ok("已打开终端窗口，请查看二维码并扫码登录".to_string()),
+            Ok(_) => Ok("已打开终端窗口，请扫码登录".to_string()),
             Err(e) => Err(format!("执行失败: {}", e))
         }
     }
