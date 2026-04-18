@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
 WORKDIR /app
 
 # 安装 openclaw
-RUN npm install -g openclaw
+RUN npm install -g openclaw@latest
 
 # ===== OLLAMA_HOST 补丁 =====
 # 让 resolveOllamaApiBase() 优先读取 OLLAMA_HOST 环境变量
