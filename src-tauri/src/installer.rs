@@ -1807,7 +1807,7 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         // 使用 Docker Hub 公开镜像
         // 尝试多个镜像源（优先官方完整镜像）
         let image_sources = vec![
-            ("缘辉旺定制镜像(支持OLLAMA_HOST)", "chenlong999988/openclaw:v2.6.81"),
+            ("缘辉旺定制镜像(支持OLLAMA_HOST)", "chenlong999988/openclaw:v2.6.83"),
             ("Docker Hub镜像", "chenlong999988/openclaw:latest"),
             ("自托管镜像", "ghcr.io/death1818/openclaw:latest"),
             ("官方镜像", "ghcr.io/openclaw/openclaw:latest"),
