@@ -1807,9 +1807,9 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         // 使用 Docker Hub 公开镜像
         // 尝试多个镜像源（优先官方完整镜像）
         let image_sources = vec![
-            ("官方镜像", "ghcr.io/openclaw/openclaw:latest"),
-            ("缘辉旺定制镜像", "chenlong999988/openclaw:latest"),
-            ("Docker Hub镜像", "chenlong999988/openclaw:v2.6.85"),
+            ("缘辉旺定制镜像", "chenlong999988/openclaw:v2.6.86"),
+            ("Docker Hub镜像", "chenlong999988/openclaw:latest"),
+            ("阿里云镜像", "registry.cn-hangzhou.aliyuncs.com/chenlong999988/openclaw:latest"),
         ];
         
         let mut image_name = "";
@@ -2023,7 +2023,7 @@ providers:
         // 重要：官方镜像默认绑定127.0.0.1，需要--bind lan才能从宿主机访问
         // 注意：PowerShell 变量 $env:USERPROFILE 会在运行时展开
         let run_cmd = format!(
-            "docker run -d --name openclaw-yuanhuiwang -p 18789:18789 -v \"$env:USERPROFILE\\.openclaw:/root/.openclaw\" -e OLLAMA_HOST=http://host.docker.internal:11434 -e OPENCLAW_AUTH_NONE=true --add-host=host.docker.internal:host-gateway {} npx openclaw gateway start --host 0.0.0.0",
+            "docker run -d --name openclaw-yuanhuiwang -p 18789:18789 -v \"$env:USERPROFILE\\.openclaw:/root/.openclaw\" -e OLLAMA_HOST=http://host.docker.internal:11434 -e OPENCLAW_AUTH_NONE=true --add-host=host.docker.internal:host-gateway {} /usr/local/bin/openclaw gateway start --host 0.0.0.0",
             image_name
         );
         
