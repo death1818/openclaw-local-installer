@@ -207,6 +207,16 @@ function App() {
   })
   const [chatConnected, setChatConnected] = useState(false)
   const [chatAttachedFile, setChatAttachedFile] = useState<string>('')
+  const [showPluginConfig, setShowPluginConfig] = useState(false)
+  const [pluginConfigs, setPluginConfigs] = useState(() => {
+    const saved = localStorage.getItem('openclaw_plugin_configs')
+    return saved ? JSON.parse(saved) : {
+      wechat: { enabled: false },
+      dingtalk: { enabled: false, appKey: '', appSecret: '' },
+      wecom: { enabled: false, corpId: '', corpSecret: '', agentId: '', token: '', encodingAESKey: '' },
+      yuanbao: { enabled: false, appId: '', appSecret: '' }
+    }
+  })
   const chatMessagesEndRef = useRef<HTMLDivElement>(null)
   const chatMessagesContainerRef = useRef<HTMLDivElement>(null)
 
@@ -234,6 +244,11 @@ function App() {
       localStorage.setItem('openclaw_selected_model', chatSelectedModel)
     }
   }, [chatSelectedModel])
+  
+  // 持久化插件配置
+  useEffect(() => {
+    localStorage.setItem('openclaw_plugin_configs', JSON.stringify(pluginConfigs))
+  }, [pluginConfigs])
   
   // 模型训练状态
   const [trainingCategory, setTrainingCategory] = useState<string>('')
@@ -3126,6 +3141,18 @@ function App() {
             )}
           </select>
           
+          {/* 通讯插件配置 */}
+          <button
+            onClick={() => setShowPluginConfig(!showPluginConfig)}
+            className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors flex items-center gap-1"
+            title="通讯插件配置"
+          >
+            📱 通讯
+            {(pluginConfigs.wechat.enabled || pluginConfigs.dingtalk.enabled || pluginConfigs.wecom.enabled || pluginConfigs.yuanbao.enabled) && (
+              <span className="w-2 h-2 rounded-full bg-green-500"></span>
+            )}
+          </button>
+          
           {/* 刷新连接 */}
           <button
             onClick={() => checkChatConnection()}
@@ -3145,6 +3172,171 @@ function App() {
           </button>
         </div>
       </div>
+      
+      {/* 通讯插件配置面板 */}
+      {showPluginConfig && (
+        <div className="absolute inset-x-0 top-14 bottom-16 bg-white dark:bg-gray-800 z-50 overflow-y-auto p-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="max-w-2xl mx-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-lg">📱 通讯插件配置</h3>
+              <button
+                onClick={() => setShowPluginConfig(false)}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              {/* 微信助手 */}
+              <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">💬</span>
+                    <span className="font-medium">微信助手</span>
+                  </div>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={pluginConfigs.wechat.enabled}
+                      onChange={(e) => setPluginConfigs({...pluginConfigs, wechat: {...pluginConfigs.wechat, enabled: e.target.checked}})}
+                      className="rounded"
+                    />
+                    启用
+                  </label>
+                </div>
+                <p className="text-sm text-gray-500">扫码登录，无需配置参数。启动后运行 <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">openclaw channels login --channel openclaw-weixin</code></p>
+              </div>
+              
+              {/* 钉钉助手 */}
+              <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">🔔</span>
+                    <span className="font-medium">钉钉助手</span>
+                  </div>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={pluginConfigs.dingtalk.enabled}
+                      onChange={(e) => setPluginConfigs({...pluginConfigs, dingtalk: {...pluginConfigs.dingtalk, enabled: e.target.checked}})}
+                      className="rounded"
+                    />
+                    启用
+                  </label>
+                </div>
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    placeholder="AppKey (Client ID)"
+                    value={pluginConfigs.dingtalk.appKey}
+                    onChange={(e) => setPluginConfigs({...pluginConfigs, dingtalk: {...pluginConfigs.dingtalk, appKey: e.target.value}})}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
+                  />
+                  <input
+                    type="password"
+                    placeholder="AppSecret (Client Secret)"
+                    value={pluginConfigs.dingtalk.appSecret}
+                    onChange={(e) => setPluginConfigs({...pluginConfigs, dingtalk: {...pluginConfigs.dingtalk, appSecret: e.target.value}})}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
+                  />
+                </div>
+              </div>
+              
+              {/* 企业微信 */}
+              <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">🏢</span>
+                    <span className="font-medium">企业微信</span>
+                  </div>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={pluginConfigs.wecom.enabled}
+                      onChange={(e) => setPluginConfigs({...pluginConfigs, wecom: {...pluginConfigs.wecom, enabled: e.target.checked}})}
+                      className="rounded"
+                    />
+                    启用
+                  </label>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    placeholder="CorpId"
+                    value={pluginConfigs.wecom.corpId}
+                    onChange={(e) => setPluginConfigs({...pluginConfigs, wecom: {...pluginConfigs.wecom, corpId: e.target.value}})}
+                    className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
+                  />
+                  <input
+                    type="text"
+                    placeholder="AgentId"
+                    value={pluginConfigs.wecom.agentId}
+                    onChange={(e) => setPluginConfigs({...pluginConfigs, wecom: {...pluginConfigs.wecom, agentId: e.target.value}})}
+                    className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
+                  />
+                  <input
+                    type="password"
+                    placeholder="CorpSecret"
+                    value={pluginConfigs.wecom.corpSecret}
+                    onChange={(e) => setPluginConfigs({...pluginConfigs, wecom: {...pluginConfigs.wecom, corpSecret: e.target.value}})}
+                    className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
+                  />
+                  <input
+                    type="password"
+                    placeholder="Token"
+                    value={pluginConfigs.wecom.token}
+                    onChange={(e) => setPluginConfigs({...pluginConfigs, wecom: {...pluginConfigs.wecom, token: e.target.value}})}
+                    className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
+                  />
+                  <input
+                    type="password"
+                    placeholder="EncodingAESKey"
+                    value={pluginConfigs.wecom.encodingAESKey}
+                    onChange={(e) => setPluginConfigs({...pluginConfigs, wecom: {...pluginConfigs.wecom, encodingAESKey: e.target.value}})}
+                    className="col-span-2 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
+                  />
+                </div>
+              </div>
+              
+              {/* 元宝BOT */}
+              <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">🤖</span>
+                    <span className="font-medium">元宝BOT</span>
+                  </div>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={pluginConfigs.yuanbao.enabled}
+                      onChange={(e) => setPluginConfigs({...pluginConfigs, yuanbao: {...pluginConfigs.yuanbao, enabled: e.target.checked}})}
+                      className="rounded"
+                    />
+                    启用
+                  </label>
+                </div>
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    placeholder="AppID"
+                    value={pluginConfigs.yuanbao.appId}
+                    onChange={(e) => setPluginConfigs({...pluginConfigs, yuanbao: {...pluginConfigs.yuanbao, appId: e.target.value}})}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
+                  />
+                  <input
+                    type="password"
+                    placeholder="AppSecret"
+                    value={pluginConfigs.yuanbao.appSecret}
+                    onChange={(e) => setPluginConfigs({...pluginConfigs, yuanbao: {...pluginConfigs.yuanbao, appSecret: e.target.value}})}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* 消息列表 */}
       <div ref={chatMessagesContainerRef} className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
