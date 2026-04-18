@@ -1807,13 +1807,13 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         // 使用 Docker Hub 公开镜像
         // 尝试多个镜像源（优先官方完整镜像）
         // 强制使用指定版本镜像，不使用本地缓存
-        let target_image = "chenlong999988/openclaw:v2.6.86";
+        let target_image = "chenlong999988/openclaw:v2.6.89";
         let image_name = target_image;
         
         // 删除旧的本地镜像缓存，确保拉取最新
         app.emit("model-progress", "[3/6] 清理旧镜像缓存...".to_string()).ok();
         let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", "docker rmi -f chenlong999988/openclaw:latest 2>$null; docker rmi -f chenlong999988/openclaw:v2.6.86 2>$null"])
+            .args(&["-NoProfile", "-Command", "docker rmi -f chenlong999988/openclaw:latest 2>$null; docker rmi -f chenlong999988/openclaw:v2.6.89 2>$null"])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         
@@ -1829,11 +1829,22 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         match pull_result {
             Ok(output) => {
                 let stdout = String::from_utf8_lossy(&output.stdout);
-                if stdout.contains("Digest") || stdout.contains("Downloaded") || stdout.contains("sha256") {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                
+                // 成功标志：镜像已存在、下载完成、或状态更新
+                let success = output.status.success() || 
+                    stdout.contains("Digest") || 
+                    stdout.contains("Downloaded") || 
+                    stdout.contains("sha256") ||
+                    stdout.contains("up to date") ||
+                    stdout.contains("Image is up to date") ||
+                    stdout.contains("Pull complete");
+                
+                if success {
                     pull_success = true;
                     app.emit("model-progress", "✅ 镜像拉取成功".to_string()).ok();
                 } else {
-                    app.emit("model-progress", format!("⚠️ 拉取输出: {}", stdout)).ok();
+                    app.emit("model-progress", format!("⚠️ 拉取输出: stdout={}, stderr={}", stdout, stderr)).ok();
                 }
             }
             Err(e) => {
