@@ -29,6 +29,7 @@ use installer::{
     check_docker_container_status,
     get_gateway_models,
     send_chat_message,
+    run_wechat_login,
     get_gateway_url,
     get_docker_token_url,
 };
@@ -102,6 +103,7 @@ fn main() {
             check_docker_container_status,
             get_gateway_models,
             send_chat_message,
+            run_wechat_login,
             get_gateway_url,
             get_docker_token_url,
         ])

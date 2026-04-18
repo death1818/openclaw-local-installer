@@ -3194,6 +3194,7 @@ function App() {
                   <div className="flex items-center gap-2">
                     <span className="text-xl">💬</span>
                     <span className="font-medium">微信助手</span>
+                    <a href="https://github.com/TencentCloud-Lighthouse/openclaw-weixin" target="_blank" className="text-xs text-blue-500 hover:underline">📖 教程</a>
                   </div>
                   <label className="flex items-center gap-2">
                     <input
@@ -3205,7 +3206,20 @@ function App() {
                     启用
                   </label>
                 </div>
-                <p className="text-sm text-gray-500">扫码登录，无需配置参数。启动后运行 <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">openclaw channels login --channel openclaw-weixin</code></p>
+                <p className="text-sm text-gray-500 mb-2">扫码登录微信，点击下方按钮显示二维码</p>
+                <button
+                  onClick={async () => {
+                    try {
+                      await invoke('run_wechat_login')
+                      alert('请在终端查看二维码并扫码')
+                    } catch (err) {
+                      alert('启动登录失败: ' + err)
+                    }
+                  }}
+                  className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm"
+                >
+                  📱 扫码登录
+                </button>
               </div>
               
               {/* 钉钉助手 */}
@@ -3214,6 +3228,7 @@ function App() {
                   <div className="flex items-center gap-2">
                     <span className="text-xl">🔔</span>
                     <span className="font-medium">钉钉助手</span>
+                    <a href="https://github.com/largezhou/ddingtalk" target="_blank" className="text-xs text-blue-500 hover:underline">📖 教程</a>
                   </div>
                   <label className="flex items-center gap-2">
                     <input
@@ -3249,6 +3264,7 @@ function App() {
                   <div className="flex items-center gap-2">
                     <span className="text-xl">🏢</span>
                     <span className="font-medium">企业微信</span>
+                    <a href="https://github.com/TencentCloud-Lighthouse/openclaw-wecom" target="_blank" className="text-xs text-blue-500 hover:underline">📖 教程</a>
                   </div>
                   <label className="flex items-center gap-2">
                     <input
@@ -3305,6 +3321,7 @@ function App() {
                   <div className="flex items-center gap-2">
                     <span className="text-xl">🤖</span>
                     <span className="font-medium">元宝BOT</span>
+                    <a href="https://github.com/TencentCloud-Lighthouse/openclaw-plugin-yuanbao" target="_blank" className="text-xs text-blue-500 hover:underline">📖 教程</a>
                   </div>
                   <label className="flex items-center gap-2">
                     <input

@@ -2465,6 +2465,59 @@ pub async fn get_gateway_models() -> Result<Vec<GatewayModel>, String> {
     Ok(vec![])
 }
 
+/// 运行微信扫码登录
+#[tauri::command]
+pub async fn run_wechat_login() -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        
+        let result = Command::new("cmd")
+            .args(&["/C", "openclaw channels login --channel openclaw-weixin"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        
+        match result {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                if output.status.success() {
+                    Ok(stdout)
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                    // 如果命令本身不存在，给出友好提示
+                    if stderr.contains("not found") || stdout.contains("not found") || stdout.contains("not recognized") {
+                        Err("openclaw 命令未找到，请先确保 OpenClaw 已安装并重启".to_string())
+                    } else {
+                        Ok(format!("{}\n{}", stdout, stderr))
+                    }
+                }
+            }
+            Err(e) => Err(format!("执行失败: {}", e))
+        }
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        let result = Command::new("openclaw")
+            .args(&["channels", "login", "--channel", "openclaw-weixin"])
+            .output();
+        
+        match result {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                if output.status.success() {
+                    Ok(stdout)
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                    Ok(format!("{}\n{}", stdout, stderr))
+                }
+            }
+            Err(e) => Err(format!("执行失败: {}", e))
+        }
+    }
+}
+
 /// 发送聊天消息到 Gateway
 #[tauri::command]
 pub async fn send_chat_message(
