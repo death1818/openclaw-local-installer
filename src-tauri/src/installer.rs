@@ -2537,7 +2537,7 @@ pub async fn send_chat_message(
     
     // 如果所有 Gateway 端点都失败，尝试直接调用 Ollama
     // 先获取 Ollama 实际存在的模型
-    let actual_model = model.clone();
+    let mut actual_model = model.clone();
     if let Ok(res) = client.get("http://localhost:11434/api/tags").send().await {
         if res.status().is_success() {
             if let Ok(json) = res.json::<serde_json::Value>().await {
