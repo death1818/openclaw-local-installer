@@ -1806,99 +1806,59 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         
         // 使用 Docker Hub 公开镜像
         // 尝试多个镜像源（优先官方完整镜像）
-        // 强制使用指定版本镜像
+        // ===== 镜像准备：pull 或 build =====
         let target_image = "chenlong999988/openclaw:v2.6.89";
         let image_name = target_image;
-        
-        app.emit("model-progress", format!("[3/6] 拉取镜像: {}...", target_image)).ok();
         let mut pull_success = false;
         
-        // 使用临时文件捕获输出（CREATE_NO_WINDOW 会吞掉 docker 输出）
-        let temp_dir = std::env::temp_dir();
-        let log_file = temp_dir.join("openclaw-pull.log");
-        let _ = std::fs::remove_file(&log_file); // 清理旧文件
-        
-        let pull_cmd = format!(
-            "docker pull {} 2>&1 | Out-File -FilePath '{}' -Encoding utf8; exit $LASTEXITCODE",
-            target_image,
-            log_file.display()
-        );
-        
-        let pull_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", &pull_cmd])
-            .creation_flags(CREATE_NO_WINDOW)
+        // 步骤1: 检查本地是否已有镜像
+        app.emit("model-progress", "[3/6] 检查本地镜像...".to_string()).ok();
+        let check_local = Command::new("docker")
+            .args(&["images", "-q", target_image])
             .output();
         
-        // 读取日志文件
-        let log_content = std::fs::read_to_string(&log_file).unwrap_or_default();
-        let log_preview: String = log_content.chars().take(300).collect();
+        if let Ok(output) = &check_local {
+            let id = String::from_utf8_lossy(&output.stdout).trim();
+            if !id.is_empty() {
+                app.emit("model-progress", format!("✅ 本地镜像已存在: {}", &id[..12.min(id.len())])).ok();
+                pull_success = true;
+            }
+        }
         
-        match &pull_result {
-            Ok(output) => {
-                let exit_code = output.status.code().unwrap_or(-1);
-                app.emit("model-progress", format!("拉取结果: exit={}, 日志:\n{}", exit_code, log_preview)).ok();
-                
-                if output.status.success() || log_content.contains("Digest") || log_content.contains("up to date") {
+        // 步骤2: 如果本地没有，尝试拉取
+        if !pull_success {
+            app.emit("model-progress", format!("[3/6] 拉取镜像: {}...", target_image)).ok();
+            app.emit("model-progress", "提示: Docker Hub 国内可能较慢，请耐心等待...".to_string()).ok();
+            
+            let pull_result = Command::new("docker")
+                .args(&["pull", target_image])
+                .status(); // 用 status() 等待完成
+            
+            if let Ok(status) = pull_result {
+                if status.success() {
                     pull_success = true;
                     app.emit("model-progress", "✅ 镜像拉取成功".to_string()).ok();
                 }
             }
-            Err(e) => {
-                app.emit("model-progress", format!("❌ 命令执行失败: {}", e)).ok();
-            }
         }
         
-        // 备选方案: 检查镜像是否已存在
+        // 步骤3: 如果拉取失败，本地构建
         if !pull_success {
-            app.emit("model-progress", "检查本地镜像...".to_string()).ok();
-            let check_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                .args(&["-NoProfile", "-Command", &format!("(docker images -q {}).Length -gt 0", target_image)])
-                .creation_flags(CREATE_NO_WINDOW)
-                .output();
+            app.emit("model-progress", "拉取失败，开始本地构建...".to_string()).ok();
             
-            if let Ok(output) = check_result {
-                if String::from_utf8_lossy(&output.stdout).trim() == "True" {
-                    pull_success = true;
-                    app.emit("model-progress", "✅ 使用本地缓存镜像".to_string()).ok();
-                }
-            }
-        }
-        
-        // 备选方案2: 本地构建镜像
-        if !pull_success {
-            app.emit("model-progress", "镜像拉取失败，尝试本地构建...".to_string()).ok();
-            
-            // 创建临时构建目录
+            let temp_dir = std::env::temp_dir();
             let build_dir = temp_dir.join("openclaw-build");
             let _ = std::fs::create_dir_all(&build_dir);
             
-            // 写入 Dockerfile
-            let dockerfile = "FROM node:22-bookworm-slim\n\
-ENV TZ=Asia/Shanghai\n\
-RUN apt-get update && apt-get install -y --no-install-recommends curl git python3 make g++ && rm -rf /var/lib/apt/lists/*\n\
-RUN git config --global url.\"https://github.com/\".insteadOf ssh://git@github.com/\n\
-RUN npm install -g openclaw@latest --ignore-scripts\n\
-RUN mkdir -p /root/.openclaw\n\
-EXPOSE 18789\n\
-ENV OLLAMA_HOST=host.docker.internal:11434\n\
-CMD [\"/usr/local/bin/openclaw\", \"gateway\", \"run\", \"--bind\", \"lan\", \"--port\", \"18789\", \"--allow-unconfigured\"]\n";
+            let dockerfile = "FROM node:22-bookworm-slim\nENV TZ=Asia/Shanghai\nRUN apt-get update && apt-get install -y curl git python3 make g++ && rm -rf /var/lib/apt/lists/*\nRUN npm install -g openclaw@latest\nEXPOSE 18789\nCMD [\"/usr/local/bin/openclaw\", \"gateway\", \"run\", \"--bind\", \"lan\", \"--allow-unconfigured\"]\n";
             std::fs::write(build_dir.join("Dockerfile"), dockerfile).ok();
             
-            let build_cmd = format!(
-                "docker build -t {} '{}' 2>&1 | Out-File -FilePath '{}' -Encoding utf8; exit $LASTEXITCODE",
-                target_image,
-                build_dir.display(),
-                log_file.display()
-            );
+            let build_result = Command::new("docker")
+                .args(&["build", "-t", target_image, &build_dir.to_string_lossy()])
+                .status();
             
-            app.emit("model-progress", "正在本地构建镜像，请耐心等待...".to_string()).ok();
-            let build_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                .args(&["-NoProfile", "-Command", &build_cmd])
-                .creation_flags(CREATE_NO_WINDOW)
-                .output();
-            
-            if let Ok(output) = build_result {
-                if output.status.success() {
+            if let Ok(status) = build_result {
+                if status.success() {
                     pull_success = true;
                     app.emit("model-progress", "✅ 镜像构建成功".to_string()).ok();
                 }
@@ -2035,39 +1995,31 @@ providers:
         
         let old_container_names = vec!["openclaw", "openclaw-yuanhuiwang"];
         for old_name in &old_container_names {
-            let check_old = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                .args(&["-NoProfile", "-Command", &format!("docker ps -a --filter name={} --format '{{{{.Names}}}}'", old_name)])
-                .creation_flags(CREATE_NO_WINDOW)
+            let _ = Command::new("docker")
+                .args(&["rm", "-f", old_name])
                 .output();
-            
-            let old_exists = match check_old {
-                Ok(output) => {
-                    let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    !result.is_empty()
-                }
-                Err(_) => false,
-            };
-            
-            if old_exists {
-                app.emit("model-progress", format!("清理旧容器: {}", old_name)).ok();
-                let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                    .args(&["-NoProfile", "-Command", &format!("docker rm -f {}", old_name)])
-                    .creation_flags(CREATE_NO_WINDOW)
-                    .output();
-            }
         }
         
-        // 启动新容器（使用已确定的有效镜像）
-        // 重要：官方镜像默认绑定127.0.0.1，需要--bind lan才能从宿主机访问
-        // 注意：PowerShell 变量 $env:USERPROFILE 会在运行时展开
-        let run_cmd = format!(
-            "docker run -d --name openclaw-yuanhuiwang -p 18789:18789 -v \"$env:USERPROFILE\\.openclaw:/root/.openclaw\" -e OLLAMA_HOST=http://host.docker.internal:11434 -e OPENCLAW_AUTH_NONE=true --add-host=host.docker.internal:host-gateway {} /usr/local/bin/openclaw gateway run --bind lan --port 18789 --allow-unconfigured",
-            image_name
-        );
+        // 启动新容器
+        let home_dir = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_else(|_| "C:\\Users\\Default".to_string());
+        let config_mount = format!("{}\\.openclaw:/root/.openclaw", home_dir);
         
-        let run_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", &run_cmd])
-            .creation_flags(CREATE_NO_WINDOW)
+        let run_result = Command::new("docker")
+            .args(&[
+                "run", "-d",
+                "--name", "openclaw-yuanhuiwang",
+                "-p", "18789:18789",
+                "-v", &config_mount,
+                "-e", "OLLAMA_HOST=http://host.docker.internal:11434",
+                "--add-host=host.docker.internal:host-gateway",
+                image_name,
+                "/usr/local/bin/openclaw", "gateway", "run",
+                "--bind", "lan",
+                "--port", "18789",
+                "--allow-unconfigured",
+            ])
             .output();
         
         match run_result {
@@ -2087,9 +2039,8 @@ providers:
                     std::thread::sleep(std::time::Duration::from_secs(5));
                     
                     // 在容器内创建配置目录
-                    let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                        .args(&["-NoProfile", "-Command", "docker exec openclaw-yuanhuiwang mkdir -p /home/node/.openclaw"])
-                        .creation_flags(CREATE_NO_WINDOW)
+                    let _ = Command::new("docker")
+                        .args(&["exec", "openclaw-yuanhuiwang", "mkdir", "-p", "/home/node/.openclaw"])
                         .output();
                     
                     // 配置已通过volume挂载自动同步，无需额外操作
@@ -2098,9 +2049,8 @@ providers:
                     app.emit("model-progress", "✅ 本地模型配置已创建 (phi3.5)".to_string()).ok();
                     
                     // 重启容器使配置生效
-                    let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                        .args(&["-NoProfile", "-Command", "docker restart openclaw-yuanhuiwang"])
-                        .creation_flags(CREATE_NO_WINDOW)
+                    let _ = Command::new("docker")
+                        .args(&["restart", "openclaw-yuanhuiwang"])
                         .output();
                     
                     std::thread::sleep(std::time::Duration::from_secs(3));
