@@ -2465,24 +2465,46 @@ pub async fn get_gateway_models() -> Result<Vec<GatewayModel>, String> {
     Ok(vec![])
 }
 
-/// 运行微信扫码登录
+/// 获取微信登录二维码 URL
 #[tauri::command]
 pub async fn run_wechat_login() -> Result<String, String> {
-    // 在Windows上需要弹出终端窗口显示二维码
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
         
-        // 使用 PowerShell Start-Process 打开可见的终端窗口
-        let result = Command::new("powershell")
-            .args(&[
-                "-Command",
-                "Start-Process cmd -ArgumentList '/K openclaw channels login --channel openclaw-weixin' -WindowStyle Normal -Wait:$false"
-            ])
-            .spawn(); // 用 spawn 不阻塞
+        // 调用 openclaw channels login 获取二维码 URL
+        let result = Command::new("cmd")
+            .args(&["/C", "openclaw channels login --channel openclaw-weixin --json 2>&1"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
         
         match result {
-            Ok(_) => Ok("已打开终端窗口，请扫码登录".to_string()),
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                let full_output = format!("{}\n{}", stdout, stderr);
+                
+                // 尝试从输出中提取 URL (https://login.weixin.qq.com/...)
+                for line in full_output.lines() {
+                    if line.contains("https://login.weixin.qq.com") || line.contains("https://login.wx.qq.com") {
+                        let url = line.trim();
+                        // 提取纯 URL
+                        if let Some(start) = url.find("https://") {
+                            let end = url[start..].find(|c: char| c.is_whitespace() || c == '\"' || c == '\'').unwrap_or(url[start..].len());
+                            return Ok(url[start..start+end].to_string());
+                        }
+                    }
+                }
+                
+                // 如果没找到 URL，返回原始输出让前端显示
+                if full_output.trim().is_empty() {
+                    Err("openclaw 命令未找到或未安装。请先确保 OpenClaw 已安装。\n\n安装方法：npm install -g openclaw".to_string())
+                } else {
+                    // 尝试另一种方式：直接用 curl 调用 Gateway API
+                    Err(format!("未获取到二维码URL，请手动运行：\nopenclaw channels login --channel openclaw-weixin\n\n输出: {}", &full_output[..200.min(full_output.len())]))
+                }
+            }
             Err(e) => Err(format!("执行失败: {}", e))
         }
     }
@@ -2490,12 +2512,23 @@ pub async fn run_wechat_login() -> Result<String, String> {
     #[cfg(not(target_os = "windows"))]
     {
         let result = Command::new("openclaw")
-            .args(&["channels", "login", "--channel", "openclaw-weixin"])
+            .args(&["channels", "login", "--channel", "openclaw-weixin", "--json"])
             .output();
         
         match result {
             Ok(output) => {
                 let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                if stdout.contains("https://") {
+                    for line in stdout.lines() {
+                        if line.contains("https://login.weixin.qq.com") || line.contains("https://login.wx.qq.com") {
+                            let url = line.trim();
+                            if let Some(start) = url.find("https://") {
+                                let end = url[start..].find(|c: char| c.is_whitespace()).unwrap_or(url[start..].len());
+                                return Ok(url[start..start+end].to_string());
+                            }
+                        }
+                    }
+                }
                 Ok(stdout)
             }
             Err(e) => Err(format!("执行失败: {}", e))

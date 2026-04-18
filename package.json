@@ -1,6 +1,6 @@
 {
   "name": "openclaw-local-installer",
-  "version": "2.7.5",
+  "version": "2.7.6",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -18,6 +18,7 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.10.1",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.0",

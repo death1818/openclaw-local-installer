@@ -211,7 +211,7 @@ function App() {
   const [pluginConfigs, setPluginConfigs] = useState(() => {
     const saved = localStorage.getItem('openclaw_plugin_configs')
     return saved ? JSON.parse(saved) : {
-      wechat: { enabled: false },
+      wechat: { enabled: false, qrUrl: '' },
       dingtalk: { enabled: false, appKey: '', appSecret: '' },
       wecom: { enabled: false, corpId: '', corpSecret: '', agentId: '', token: '', encodingAESKey: '' },
       yuanbao: { enabled: false, appId: '', appSecret: '' }
@@ -3206,20 +3206,40 @@ function App() {
                     启用
                   </label>
                 </div>
-                <p className="text-sm text-gray-500 mb-2">扫码登录微信，点击下方按钮显示二维码</p>
-                <button
-                  onClick={async () => {
-                    try {
-                      const result = await invoke<string>('run_wechat_login')
-                      alert(result || '请在终端查看二维码并扫码')
-                    } catch (err) {
-                      alert('启动登录失败: ' + err)
-                    }
-                  }}
-                  className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm"
-                >
-                  📱 扫码登录
-                </button>
+                <p className="text-sm text-gray-500 mb-3">点击下方按钮获取二维码，用微信扫码登录</p>
+                <div className="flex flex-col items-center gap-3">
+                  {pluginConfigs.wechat.qrUrl ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <canvas ref={async (canvas) => {
+                        if (canvas && pluginConfigs.wechat.qrUrl) {
+                          try {
+                            const QRCode = (await import('qrcode')).default
+                            QRCode.toCanvas(canvas, pluginConfigs.wechat.qrUrl!, { width: 200, margin: 2, color: { dark: '#000', light: '#fff' } })
+                          } catch (e) { console.error('QR render error', e) }
+                        }
+                      }} />
+                      <p className="text-xs text-gray-400">用微信扫描此二维码登录</p>
+                      <a href={pluginConfigs.wechat.qrUrl} target="_blank" className="text-xs text-blue-500 hover:underline">二维码不显示？点击打开链接扫码</a>
+                    </div>
+                  ) : null}
+                  <button
+                    onClick={async () => {
+                      try {
+                        const result = await invoke<string>('run_wechat_login')
+                        if (result.startsWith('https://')) {
+                          setPluginConfigs({...pluginConfigs, wechat: {...pluginConfigs.wechat, qrUrl: result}})
+                        } else {
+                          alert(result)
+                        }
+                      } catch (err) {
+                        alert('获取二维码失败: ' + err)
+                      }
+                    }}
+                    className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm"
+                  >
+                    📱 获取登录二维码
+                  </button>
+                </div>
               </div>
               
               {/* 钉钉助手 */}
