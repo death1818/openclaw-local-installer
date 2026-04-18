@@ -1806,31 +1806,41 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         
         // 使用 Docker Hub 公开镜像
         // 尝试多个镜像源（优先官方完整镜像）
-        // 强制使用指定版本镜像，不使用本地缓存
+        // 强制使用指定版本镜像
         let target_image = "chenlong999988/openclaw:v2.6.89";
         let image_name = target_image;
         
-        // 强制拉取指定版本（使用重定向捕获输出）
         app.emit("model-progress", format!("[3/6] 拉取镜像: {}...", target_image)).ok();
         let mut pull_success = false;
         
-        // 方式1: 直接运行 docker pull，通过退出码判断
+        // 使用临时文件捕获输出（CREATE_NO_WINDOW 会吞掉 docker 输出）
+        let temp_dir = std::env::temp_dir();
+        let log_file = temp_dir.join("openclaw-pull.log");
+        let _ = std::fs::remove_file(&log_file); // 清理旧文件
+        
+        let pull_cmd = format!(
+            "docker pull {} 2>&1 | Out-File -FilePath '{}' -Encoding utf8; exit $LASTEXITCODE",
+            target_image,
+            log_file.display()
+        );
+        
         let pull_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", &format!("docker pull {} 2>&1 | Out-String", target_image)])
+            .args(&["-NoProfile", "-Command", &pull_cmd])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         
+        // 读取日志文件
+        let log_content = std::fs::read_to_string(&log_file).unwrap_or_default();
+        let log_preview: String = log_content.chars().take(300).collect();
+        
         match &pull_result {
             Ok(output) => {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                app.emit("model-progress", format!("拉取结果: exit={}, stdout=[{}]", output.status.code().unwrap_or(-1), &stdout[..stdout.len().min(200)])).ok();
+                let exit_code = output.status.code().unwrap_or(-1);
+                app.emit("model-progress", format!("拉取结果: exit={}, 日志:\n{}", exit_code, log_preview)).ok();
                 
-                if output.status.success() {
+                if output.status.success() || log_content.contains("Digest") || log_content.contains("up to date") {
                     pull_success = true;
                     app.emit("model-progress", "✅ 镜像拉取成功".to_string()).ok();
-                } else {
-                    app.emit("model-progress", format!("⚠️ 拉取失败: stderr={}", &stderr[..stderr.len().min(200)])).ok();
                 }
             }
             Err(e) => {
@@ -1838,21 +1848,59 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
             }
         }
         
-        // 方式2: 如果 pull 退出码不对，检查镜像是否实际已存在
+        // 备选方案: 检查镜像是否已存在
         if !pull_success {
-            app.emit("model-progress", "检查镜像是否已存在...".to_string()).ok();
+            app.emit("model-progress", "检查本地镜像...".to_string()).ok();
             let check_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                .args(&["-NoProfile", "-Command", &format!("docker images -q {} 2>$null", target_image)])
+                .args(&["-NoProfile", "-Command", &format!("(docker images -q {}).Length -gt 0", target_image)])
                 .creation_flags(CREATE_NO_WINDOW)
                 .output();
             
             if let Ok(output) = check_result {
-                let image_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if !image_id.is_empty() {
+                if String::from_utf8_lossy(&output.stdout).trim() == "True" {
                     pull_success = true;
-                    app.emit("model-progress", format!("✅ 镜像已存在: {}", &image_id[..12.min(image_id.len())])).ok();
-                } else {
-                    app.emit("model-progress", "❌ 镜像不存在".to_string()).ok();
+                    app.emit("model-progress", "✅ 使用本地缓存镜像".to_string()).ok();
+                }
+            }
+        }
+        
+        // 备选方案2: 本地构建镜像
+        if !pull_success {
+            app.emit("model-progress", "镜像拉取失败，尝试本地构建...".to_string()).ok();
+            
+            // 创建临时构建目录
+            let build_dir = temp_dir.join("openclaw-build");
+            let _ = std::fs::create_dir_all(&build_dir);
+            
+            // 写入 Dockerfile
+            let dockerfile = "FROM node:22-bookworm-slim\n\
+ENV TZ=Asia/Shanghai\n\
+RUN apt-get update && apt-get install -y --no-install-recommends curl git python3 make g++ && rm -rf /var/lib/apt/lists/*\n\
+RUN git config --global url.\"https://github.com/\".insteadOf ssh://git@github.com/\n\
+RUN npm install -g openclaw@latest --ignore-scripts\n\
+RUN mkdir -p /root/.openclaw\n\
+EXPOSE 18789\n\
+ENV OLLAMA_HOST=host.docker.internal:11434\n\
+CMD [\"/usr/local/bin/openclaw\", \"gateway\", \"run\", \"--bind\", \"lan\", \"--port\", \"18789\", \"--allow-unconfigured\"]\n";
+            std::fs::write(build_dir.join("Dockerfile"), dockerfile).ok();
+            
+            let build_cmd = format!(
+                "docker build -t {} '{}' 2>&1 | Out-File -FilePath '{}' -Encoding utf8; exit $LASTEXITCODE",
+                target_image,
+                build_dir.display(),
+                log_file.display()
+            );
+            
+            app.emit("model-progress", "正在本地构建镜像，请耐心等待...".to_string()).ok();
+            let build_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                .args(&["-NoProfile", "-Command", &build_cmd])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
+            
+            if let Ok(output) = build_result {
+                if output.status.success() {
+                    pull_success = true;
+                    app.emit("model-progress", "✅ 镜像构建成功".to_string()).ok();
                 }
             }
         }
