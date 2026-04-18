@@ -1838,17 +1838,22 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
             let _ = std::fs::create_dir_all(&build_dir);
             
             // Dockerfile 内容
-            let dockerfile_content = r#"FROM node:22-bookworm-slim
+            let dockerfile_content = format!(r##"FROM node:22-bookworm-slim
 ENV TZ=Asia/Shanghai
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends curl git ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends curl git ca-certificates python3 make g++ && rm -rf /var/lib/apt/lists/*
+RUN git --version
 RUN git config --global url."https://github.com/".insteadOf ssh://git@github.com/
-RUN npm install -g openclaw@latest --ignore-scripts || npm install -g openclaw@latest
+RUN git config --global url."https://github.com/".insteadOf git@github.com:
+RUN git config --global url."https://".insteadOf git://
+RUN npm install -g openclaw@latest --ignore-scripts
+RUN test -f /usr/local/bin/openclaw || ln -sf /usr/local/lib/node_modules/openclaw/openclaw.mjs /usr/local/bin/openclaw
+RUN /usr/local/bin/openclaw --version
 RUN mkdir -p /root/.openclaw
 EXPOSE 18789
 ENV OLLAMA_HOST=host.docker.internal:11434
-CMD ["/usr/local/bin/openclaw", "gateway", "run", "--bind", "lan", "--port", "18789", "--allow-unconfigured"]
-"#;
+CMD ["/usr/local/bin/openclaw", "gateway", "run", "--bind", "lan", "--allow-unconfigured"]
+"##);
             std::fs::write(build_dir.join("Dockerfile"), dockerfile_content).ok();
             
             app.emit("model-progress", "构建中... 请等待".to_string()).ok();
