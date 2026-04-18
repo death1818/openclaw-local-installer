@@ -5,14 +5,19 @@ FROM node:22-bookworm-slim
 
 LABEL maintainer="缘辉旺团队"
 LABEL description="OpenClaw 本地版 Gateway - 支持 OLLAMA_HOST 环境变量自动发现宿主机 Ollama"
-LABEL version="1.1.0"
+LABEL version="2.6.78"
 
 ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl git && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl git openssh-client ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+# 配置 git 用 https 替代 ssh（解决 npm install git+ssh 依赖问题）
+RUN git config --global url."https://github.com/".insteadOf ssh://git@github.com/ && \
+    git config --global url."https://github.com/".insteadOf git@github.com:
 
 # 安装 openclaw
 RUN npm install -g openclaw@latest
