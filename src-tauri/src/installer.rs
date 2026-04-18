@@ -1811,8 +1811,6 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         let image_name = target_image;
         let mut pull_success = false;
         
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        
         // 步骤1: 检查本地镜像
         app.emit("model-progress", "[3/6] 检查本地镜像...".to_string()).ok();
         let check_local = Command::new("docker")
