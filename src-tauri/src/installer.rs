@@ -2468,57 +2468,69 @@ pub async fn get_gateway_models() -> Result<Vec<GatewayModel>, String> {
 /// 获取微信登录二维码 URL
 #[tauri::command]
 pub async fn run_wechat_login() -> Result<String, String> {
-    // 先检查 Gateway 是否运行
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
-        .build()
-        .map_err(|e| e.to_string())?;
+    // 微信登录需要通过 openclaw channels login 命令
+    // 这个命令会输出二维码 URL
     
-    // 尝试调用 Gateway 的 channels API
-    let gateway_url = "http://localhost:18789/api/channels/openclaw-weixin/login/start";
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        
+        // 先检查 openclaw 是否安装
+        let check = Command::new("where")
+            .args(&["openclaw"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        
+        let openclaw_exists = match check {
+            Ok(o) => o.status.success(),
+            Err(_) => false,
+        };
+        
+        let cmd_str = if openclaw_exists {
+            "openclaw channels login --channel openclaw-weixin 2>&1"
+        } else {
+            "npx -y openclaw channels login --channel openclaw-weixin 2>&1"
+        };
+        
+        let result = Command::new("cmd")
+            .args(&["/C", cmd_str])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        
+        extract_qr_from_output(result)
+    }
     
-    let response = client
-        .post(gateway_url)
-        .send()
-        .await;
-    
-    match response {
-        Ok(res) if res.status().is_success() => {
-            if let Ok(json) = res.json::<serde_json::Value>().await {
-                // 尝试从响应中提取二维码 URL
-                if let Some(qr_url) = json.get("qrDataUrl").and_then(|v| v.as_str()) {
-                    return Ok(qr_url.to_string());
-                }
-                if let Some(qr_url) = json.get("qrcodeUrl").and_then(|v| v.as_str()) {
-                    return Ok(qr_url.to_string());
-                }
-                if let Some(qr_url) = json.get("url").and_then(|v| v.as_str()) {
-                    return Ok(qr_url.to_string());
+    #[cfg(not(target_os = "windows"))]
+    {
+        let result = Command::new("sh")
+            .args(&["-c", "openclaw channels login --channel openclaw-weixin 2>&1 || npx -y openclaw channels login --channel openclaw-weixin 2>&1"])
+            .output();
+        
+        extract_qr_from_output(result)
+    }
+}
+
+fn extract_qr_from_output(result: Result<std::process::Output, std::io::Error>) -> Result<String, String> {
+    match result {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let full = format!("{}\n{}", stdout, stderr);
+            
+            // 提取二维码 URL
+            for line in full.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("https://login.weixin.qq.com") || trimmed.starts_with("https://login.wx.qq.com") {
+                    let url = trimmed.split_whitespace().next().unwrap_or(trimmed);
+                    return Ok(url.to_string());
                 }
             }
-            Err("Gateway 返回的数据中未找到二维码 URL".to_string())
+            
+            // 如果没找到 URL，返回错误信息
+            Err(format!("未找到二维码链接。\n\n输出内容:\n{}", &full[..500.min(full.len())]))
         }
-        Ok(res) => {
-            let status = res.status();
-            if status.as_u16() == 404 {
-                Err("微信插件未安装或未启用。请先在技能管理中安装 openclaw-weixin".to_string())
-            } else if status.as_u16() == 503 {
-                Err("Gateway 正在启动，请稍后重试".to_string())
-            } else {
-                Err(format!("Gateway 返回错误: {}", status))
-            }
-        }
-        Err(e) => {
-            // Gateway 未运行，提示用户
-            Err(format!(
-                "OpenClaw Gateway 未运行。\n\n\
-                请先启动 Gateway：\n\
-                1. 在启动器页面点击 '启动 OpenClaw'\n\
-                或\n\
-                2. 运行命令: openclaw gateway run\n\n\
-                详细错误: {}", e
-            ))
-        }
+        Err(e) => Err(format!("执行失败: {}\n\n请确保已安装 Node.js", e))
     }
 }
 

@@ -3206,11 +3206,7 @@ function App() {
                     启用
                   </label>
                 </div>
-                <p className="text-sm text-gray-500 mb-3">
-                  {chatConnected 
-                    ? '点击下方按钮获取二维码，用微信扫码登录' 
-                    : '⚠️ 需要先启动 OpenClaw Gateway 才能登录微信'}
-                </p>
+                <p className="text-sm text-gray-500 mb-3">点击下方按钮获取二维码，用微信扫码登录</p>
                 <div className="flex flex-col items-center gap-3">
                   {pluginConfigs.wechat.qrUrl ? (
                     <div className="flex flex-col items-center gap-2">
@@ -3228,10 +3224,6 @@ function App() {
                   ) : null}
                   <button
                     onClick={async () => {
-                      if (!chatConnected) {
-                        alert('请先返回启动器页面启动 OpenClaw Gateway')
-                        return
-                      }
                       try {
                         const result = await invoke<string>('run_wechat_login')
                         if (result.startsWith('https://')) {
@@ -3243,16 +3235,10 @@ function App() {
                         alert(err)
                       }
                     }}
-                    className={`px-4 py-2 ${chatConnected ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-400 cursor-not-allowed'} text-white rounded-lg text-sm`}
+                    className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm"
                   >
                     📱 获取登录二维码
                   </button>
-                  {!chatConnected && (
-                    <p className="text-xs text-gray-400 text-center">
-                      请先在启动器页面点击「启动 OpenClaw」<br/>
-                      或运行命令: <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">openclaw gateway run</code>
-                    </p>
-                  )}
                 </div>
               </div>
               
