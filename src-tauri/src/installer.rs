@@ -1878,14 +1878,81 @@ CMD ["/usr/local/bin/openclaw", "gateway", "run", "--bind", "lan", "--allow-unco
         }
         
         if !pull_success {
-            return Err(
-                "所有镜像源拉取失败！\n\n\
-                请确保 Docker Desktop 已启动，然后重试。\n\n\
-                解决方案：\n\
-                1. 启动 Docker Desktop 并等待状态变为 Running\n\
-                2. 检查网络连接\n\
-                3. 或使用 npm 方式运行：npm install -g openclaw && openclaw gateway start".to_string()
-            );
+            // Docker 镜像构建失败，回退到 npm 方式运行
+            app.emit("model-progress", "⚠️ Docker 镜像构建失败，回退到 npm 方式运行...".to_string()).ok();
+            
+            // 检查 npm 是否可用
+            let npm_check = Command::new("npm")
+                .args(&["--version"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
+            
+            let npm_available = match npm_check {
+                Ok(output) => output.status.success(),
+                Err(_) => false,
+            };
+            
+            if !npm_available {
+                return Err(
+                    "Docker 镜像构建失败，且 npm 不可用！\n\n\
+                    解决方案：\n\
+                    1. 安装 Node.js: https://nodejs.org\n\
+                    2. 然后手动运行: npm install -g openclaw && openclaw gateway run --bind lan --allow-unconfigured".to_string()
+                );
+            }
+            
+            // 安装 openclaw
+            app.emit("model-progress", "⏬ 正在安装 openclaw（npm方式）...".to_string()).ok();
+            let npm_install = Command::new("npm")
+                .args(&["install", "-g", "openclaw@latest", "--ignore-scripts"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
+            
+            match npm_install {
+                Ok(output) => {
+                    if output.status.success() {
+                        app.emit("model-progress", "✅ openclaw 安装成功".to_string()).ok();
+                    } else {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        return Err(format!("openclaw 安装失败: {}", &stderr[..200.min(stderr.len())]));
+                    }
+                }
+                Err(e) => {
+                    return Err(format!("npm 执行失败: {}", e));
+                }
+            }
+            
+            // 配置 Ollama
+            let config_dir = format!("{}\\.openclaw", std::env::var("USERPROFILE").unwrap_or_default());
+            std::fs::create_dir_all(&config_dir).ok();
+            let config_content = format!(r#"model: ollama/{model}
+models:\n  providers:\n    ollama:\n      baseUrl: "http://127.0.0.1:11434"\n      api: ollama\ngateway:\n  mode: local\n  port: 18789\n  host: 0.0.0.0\n"#, model = "phi3.5");
+            std::fs::write(format!("{}\\openclaw.yaml", config_dir), &config_content).ok();
+            
+            // 直接运行 openclaw gateway
+            app.emit("model-progress", "🚀 正在启动 OpenClaw...".to_string()).ok();
+            let gateway_run = Command::new("openclaw")
+                .args(&["gateway", "run", "--bind", "lan", "--port", "18789", "--allow-unconfigured"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn(); // 用 spawn 不阻塞
+            
+            match gateway_run {
+                Ok(_) => {
+                    app.emit("model-progress", "✅ OpenClaw 已启动（npm模式）".to_string()).ok();
+                    app.emit("model-progress", "📱 访问: http://localhost:18789".to_string()).ok();
+                    
+                    // 保存部署状态
+                    app.emit("local-storage-set", serde_json::json!({ 
+                        "key": "openclaw_deployed", 
+                        "value": "npm" 
+                    })).ok();
+                    
+                    return Ok("OpenClaw 已启动（npm模式）\n访问: http://localhost:18789".to_string());
+                }
+                Err(e) => {
+                    return Err(format!("启动失败: {}", e));
+                }
+            }
         }
         
         // 步骤4: 检查并安装 Ollama（宿主机本地模型需要）
