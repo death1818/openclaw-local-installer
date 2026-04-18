@@ -1806,64 +1806,38 @@ pub async fn deploy_docker(app: tauri::AppHandle) -> Result<String, String> {
         
         // 使用 Docker Hub 公开镜像
         // 尝试多个镜像源（优先官方完整镜像）
-        let image_sources = vec![
-            ("缘辉旺定制镜像", "chenlong999988/openclaw:v2.6.86"),
-            ("Docker Hub镜像", "chenlong999988/openclaw:latest"),
-            ("阿里云镜像", "registry.cn-hangzhou.aliyuncs.com/chenlong999988/openclaw:latest"),
-        ];
+        // 强制使用指定版本镜像，不使用本地缓存
+        let target_image = "chenlong999988/openclaw:v2.6.86";
+        let image_name = target_image;
         
-        let mut image_name = "";
+        // 删除旧的本地镜像缓存，确保拉取最新
+        app.emit("model-progress", "[3/6] 清理旧镜像缓存...".to_string()).ok();
+        let _ = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-NoProfile", "-Command", "docker rmi -f chenlong999988/openclaw:latest 2>$null; docker rmi -f chenlong999988/openclaw:v2.6.86 2>$null"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        
+        // 强制拉取指定版本
+        app.emit("model-progress", format!("[3/6] 拉取镜像: {}...", target_image)).ok();
         let mut pull_success = false;
         
-        // 先检查镜像是否已存在
-        // 检查是否有任何可用镜像
-        let mut image_exists = false;
-        for (_, img) in &image_sources {
-            let check = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                .args(&["-NoProfile", "-Command", &format!("docker images -q {} 2>$null", img)])
-                .creation_flags(CREATE_NO_WINDOW)
-                .output();
-            
-            if let Ok(output) = check {
-                let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if !result.is_empty() {
-                    image_exists = true;
-                    image_name = img;
-                    app.emit("model-progress", format!("✅ 找到已存在镜像: {}", img)).ok();
-                    break;
+        let pull_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-NoProfile", "-Command", &format!("docker pull {}", target_image)])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        
+        match pull_result {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                if stdout.contains("Digest") || stdout.contains("Downloaded") || stdout.contains("sha256") {
+                    pull_success = true;
+                    app.emit("model-progress", "✅ 镜像拉取成功".to_string()).ok();
+                } else {
+                    app.emit("model-progress", format!("⚠️ 拉取输出: {}", stdout)).ok();
                 }
             }
-        }
-        
-        if image_exists {
-            app.emit("model-progress", "✅ 镜像已存在，跳过拉取".to_string()).ok();
-            pull_success = true;
-        } else {
-            // 尝试多个镜像源
-            for (name, img) in &image_sources {
-                app.emit("model-progress", format!("[3/6] 尝试拉取 {} ({})...", name, img)).ok();
-                
-                let pull_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                    .args(&["-NoProfile", "-Command", &format!("docker pull {} 2>&1", img)])
-                    .creation_flags(CREATE_NO_WINDOW)
-                    .output();
-                
-                match pull_result {
-                    Ok(output) => {
-                        let stdout = String::from_utf8_lossy(&output.stdout);
-                        if !stdout.contains("Error") && !stdout.contains("denied") && !stdout.contains("unauthorized") {
-                            image_name = img;
-                            pull_success = true;
-                            app.emit("model-progress", format!("✅ {} 拉取成功", name)).ok();
-                            break;
-                        } else {
-                            app.emit("model-progress", format!("⚠️ {} 拉取失败，尝试下一个...", name)).ok();
-                        }
-                    }
-                    Err(e) => {
-                        app.emit("model-progress", format!("⚠️ {} 拉取出错: {}", name, e)).ok();
-                    }
-                }
+            Err(e) => {
+                app.emit("model-progress", format!("❌ 拉取失败: {}", e)).ok();
             }
         }
         
