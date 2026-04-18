@@ -18,19 +18,8 @@ if (!fs.existsSync(distDir)) {
   process.exit(1);
 }
 
-// 要插入的 resolveOllamaHostEnv 函数
-const hostEnvFunc = `
-function resolveOllamaHostEnv() {
-  if (typeof process !== "undefined" && process.env?.OLLAMA_HOST?.trim()) {
-    let h = process.env.OLLAMA_HOST.trim();
-    if (!h.startsWith("http://") && !h.startsWith("https://")) {
-      h = "http://" + h;
-    }
-    return h.replace(/\\/\\/+$/, "").replace(/\\/v1$/i, "");
-  }
-  return undefined;
-}
-`;
+// 要插入的 resolveOllamaHostEnv 函数（用模板字符串避免转义问题）
+const hostEnvFunc = `function resolveOllamaHostEnv(){if(typeof process!=="undefined"&&process.env&&process.env.OLLAMA_HOST&&process.env.OLLAMA_HOST.trim()){let h=process.env.OLLAMA_HOST.trim();if(!h.startsWith("http://")&&!h.startsWith("https://")){h="http://"+h}return h.replace(/[\\\\/]+$/,"").replace(/\\/v1$/i,"")}return undefined}`;
 
 // 遍历 provider-models-*.js 文件
 const files = fs.readdirSync(distDir).filter(f => f.startsWith('provider-models-') && f.endsWith('.js'));
@@ -45,14 +34,14 @@ for (const file of files) {
 
     // 在 resolveOllamaApiBase 前插入 resolveOllamaHostEnv
     content = content.replace(
-      /function resolveOllamaApiBase/,
-      hostEnvFunc + 'function resolveOllamaApiBase'
+      'function resolveOllamaApiBase',
+      hostEnvFunc + '\nfunction resolveOllamaApiBase'
     );
 
     // 修改返回逻辑
     content = content.replace(
       /return OLLAMA_DEFAULT_BASE_URL/g,
-      'return resolveOllamaHostEnv() ?? OLLAMA_DEFAULT_BASE_URL'
+      'return resolveOllamaHostEnv()??OLLAMA_DEFAULT_BASE_URL'
     );
 
     fs.writeFileSync(filePath, content);
@@ -67,7 +56,7 @@ if (fs.existsSync(discoveryPath)) {
   console.log('Patching: extensions/ollama/provider-discovery.js');
   let content = fs.readFileSync(discoveryPath, 'utf8');
   content = content.replace(
-    /envVars:\["OLLAMA_API_KEY"\]/g,
+    'envVars:["OLLAMA_API_KEY"]',
     'envVars:["OLLAMA_API_KEY","OLLAMA_HOST"]'
   );
   fs.writeFileSync(discoveryPath, content);
