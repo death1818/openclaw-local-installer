@@ -2524,8 +2524,8 @@ pub async fn run_wechat_login() -> Result<String, String> {
             ).await;
             
             match exec_result {
-                Ok(result) => extract_qr_from_output(result),
-                Err(_) => Err("获取二维码超时（90秒）\n\n请在cmd.exe中手动执行：\nnpx openclaw channels login --channel openclaw-weixin".to_string()),
+                Ok(result) => return extract_qr_from_output(result),
+                Err(_) => return Err("获取二维码超时（90秒）\n\n请在cmd.exe中手动执行：\nnpx openclaw channels login --channel openclaw-weixin".to_string()),
             }
         } else {
             // 主机没有 Node.js，尝试 Docker 容器
@@ -2559,11 +2559,10 @@ pub async fn run_wechat_login() -> Result<String, String> {
             ).await;
             
             match exec_result {
-                Ok(result) => extract_qr_from_output(result),
-                Err(_) => Err(format!("获取二维码超时（60秒）\n\n请在cmd.exe中手动执行：\ndocker exec {} npx openclaw channels login --channel openclaw-weixin", container_name)),
+                Ok(result) => return extract_qr_from_output(result),
+                Err(_) => return Err(format!("获取二维码超时（60秒）\n\n请在cmd.exe中手动执行：\ndocker exec {} npx openclaw channels login --channel openclaw-weixin", container_name)),
             }
         }
-    }
     }
     
     #[cfg(not(target_os = "windows"))]
@@ -2572,7 +2571,7 @@ pub async fn run_wechat_login() -> Result<String, String> {
             .args(&["-c", "openclaw channels login --channel openclaw-weixin 2>&1 || npx -y openclaw channels login --channel openclaw-weixin 2>&1"])
             .output();
         
-        extract_qr_from_output(result)
+        return extract_qr_from_output(result);
     }
 }
 
