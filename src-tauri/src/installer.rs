@@ -2511,12 +2511,13 @@ pub async fn run_wechat_login() -> Result<String, String> {
         };
         
         if host_has_node {
-            // 主机有 Node.js，直接在主机执行（最可靠）
+            // 主机有 Node.js，直接在主机执行
+            // 使用 npm exec 代替 npx（npm exec 更稳定）
             let exec_result = tokio::time::timeout(
-                std::time::Duration::from_secs(60),
+                std::time::Duration::from_secs(90),
                 async {
                     Command::new("C:\\Windows\\System32\\cmd.exe")
-                        .args(&["/c", "npx openclaw channels login --channel openclaw-weixin 2>&1"])
+                        .args(&["/c", "npm exec --yes -- openclaw channels login --channel openclaw-weixin 2>&1"])
                         .creation_flags(CREATE_NO_WINDOW)
                         .output()
                 }
@@ -2524,7 +2525,7 @@ pub async fn run_wechat_login() -> Result<String, String> {
             
             match exec_result {
                 Ok(result) => extract_qr_from_output(result),
-                Err(_) => Err("获取二维码超时（60秒）\n\n请在cmd.exe中手动执行测试：\nnpx openclaw channels login --channel openclaw-weixin".to_string()),
+                Err(_) => Err("获取二维码超时（90秒）\n\n请在cmd.exe中手动执行：\nnpx openclaw channels login --channel openclaw-weixin".to_string()),
             }
         } else {
             // 主机没有 Node.js，尝试 Docker 容器
