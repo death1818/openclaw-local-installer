@@ -2519,12 +2519,13 @@ pub async fn run_wechat_login() -> Result<String, String> {
         
         if docker_container_running {
             // Docker 容器正在运行：在容器内执行命令
+            // 使用 cmd.exe 而非 PowerShell，因为 PowerShell 无法正确捕获 docker exec 的输出
             let exec_cmd = format!("docker exec {} npx openclaw channels login --channel openclaw-weixin 2>&1", container_name);
             let exec_result = tokio::time::timeout(
-                std::time::Duration::from_secs(60),  // 增加到60秒，npx首次下载需要时间
+                std::time::Duration::from_secs(60),
                 async {
-                    Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                        .args(&["-NoProfile", "-Command", &exec_cmd])
+                    Command::new("C:\\Windows\\System32\\cmd.exe")
+                        .args(&["/c", &exec_cmd])
                         .creation_flags(CREATE_NO_WINDOW)
                         .output()
                 }
@@ -2532,7 +2533,7 @@ pub async fn run_wechat_login() -> Result<String, String> {
             
             match exec_result {
                 Ok(result) => extract_qr_from_output(result),
-                Err(_) => Err(format!("获取二维码超时（30秒）\n\n可能原因：\n1. 容器内命令执行慢\n2. 网络问题\n\n建议：在终端执行 docker exec {} npx openclaw channels login --channel openclaw-weixin", container_name)),
+                Err(_) => Err(format!("获取二维码超时（60秒）\n\n可能原因：\n1. 容器内命令执行慢\n2. 网络问题\n\n建议：在终端执行 docker exec {} npx openclaw channels login --channel openclaw-weixin", container_name)),
             }
         } else {
             // Docker 容器未运行，检查是否需要提示用户
@@ -2581,7 +2582,7 @@ pub async fn run_wechat_login() -> Result<String, String> {
             
             match exec_result {
                 Ok(result) => extract_qr_from_output(result),
-                Err(_) => Err("获取二维码超时（30秒）\n\n可能原因：\n1. npm 包下载慢\n2. 网络问题\n\n建议：在终端执行 openclaw channels login --channel openclaw-weixin".to_string()),
+                Err(_) => Err("获取二维码超时（60秒）\n\n可能原因：\n1. npm 包下载慢\n2. 网络问题\n\n建议：在终端执行 openclaw channels login --channel openclaw-weixin".to_string()),
             }
         }
     }
@@ -2616,7 +2617,7 @@ fn extract_qr_from_output(result: Result<std::process::Output, std::io::Error>) 
             
             // 检查超时
             if full.contains("ERROR_TIMEOUT") {
-                return Err("获取二维码超时（30秒）\n\n可能原因：\n1. 网络连接不畅\n2. npm 包下载慢\n\n建议：\n- 检查网络连接\n- 手动在终端执行：openclaw channels login --channel openclaw-weixin".to_string());
+                return Err("获取二维码超时（60秒）\n\n可能原因：\n1. 网络连接不畅\n2. npm 包下载慢\n\n建议：\n- 检查网络连接\n- 手动在终端执行：openclaw channels login --channel openclaw-weixin".to_string());
             }
             
             // 提取二维码 URL
@@ -2647,7 +2648,7 @@ fn extract_qr_from_output(result: Result<std::process::Output, std::io::Error>) 
             
             // 如果没找到 URL，返回错误信息（包含完整输出）
             if full.trim().is_empty() {
-                return Err("命令执行成功但输出为空\n\n可能原因：\n1. 容器内未安装openclaw\n2. npx需要先下载依赖\n\n建议：在终端手动执行测试\ndocker exec <容器名> npx openclaw channels login --channel openclaw-weixin".to_string());
+                return Err("命令执行成功但输出为空\n\n可能原因：\n1. 容器内未安装openclaw\n2. npx需要先下载依赖\n\n请在cmd.exe中手动测试：\ndocker exec <容器名> npx openclaw channels login --channel openclaw-weixin".to_string());
             }
             
             Err(format!("未找到二维码链接\n\n输出内容:\n{}", &full[..800.min(full.len())]))
