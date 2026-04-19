@@ -2496,27 +2496,35 @@ pub async fn run_wechat_login() -> Result<String, String> {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         
-        // 检测 Docker 容器是否正在运行（不是仅存在）
+        // 检测 Docker 容器是否正在运行（docker ps 默认只显示运行中的容器）
+        // 使用模糊匹配，只要容器名包含 openclaw 就认为是目标容器
         let docker_check = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", "docker ps --filter name=openclaw-yuanhuiwang --filter status=running --format '{{.Names}}'"])
+            .args(&["-NoProfile", "-Command", "docker ps --format '{{.Names}}' | Select-String -Pattern 'openclaw' -SimpleMatch"])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         
-        let docker_container_running = match docker_check {
+        let (docker_container_running, container_name) = match docker_check {
             Ok(output) => {
                 let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                result.contains("openclaw-yuanhuiwang")
+                if result.contains("openclaw") {
+                    // 提取容器名（取第一个匹配）
+                    let name = result.lines().next().unwrap_or("").trim().to_string();
+                    (true, if name.is_empty() { "openclaw-yuanhuiwang".to_string() } else { name })
+                } else {
+                    (false, String::new())
+                }
             }
-            Err(_) => false,
+            Err(_) => (false, String::new()),
         };
         
         if docker_container_running {
             // Docker 容器正在运行：在容器内执行命令
+            let exec_cmd = format!("docker exec {} npx openclaw channels login --channel openclaw-weixin 2>&1", container_name);
             let exec_result = tokio::time::timeout(
                 std::time::Duration::from_secs(30),
                 async {
                     Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                        .args(&["-NoProfile", "-Command", "docker exec openclaw-yuanhuiwang npx openclaw channels login --channel openclaw-weixin 2>&1"])
+                        .args(&["-NoProfile", "-Command", &exec_cmd])
                         .creation_flags(CREATE_NO_WINDOW)
                         .output()
                 }
@@ -2524,7 +2532,7 @@ pub async fn run_wechat_login() -> Result<String, String> {
             
             match exec_result {
                 Ok(result) => extract_qr_from_output(result),
-                Err(_) => Err("获取二维码超时（30秒）\n\n可能原因：\n1. 容器内命令执行慢\n2. 网络问题\n\n建议：在终端执行 docker exec openclaw-yuanhuiwang npx openclaw channels login --channel openclaw-weixin".to_string()),
+                Err(_) => Err(format!("获取二维码超时（30秒）\n\n可能原因：\n1. 容器内命令执行慢\n2. 网络问题\n\n建议：在终端执行 docker exec {} npx openclaw channels login --channel openclaw-weixin", container_name)),
             }
         } else {
             // Docker 容器未运行，检查是否需要提示用户
