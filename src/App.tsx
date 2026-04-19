@@ -3279,19 +3279,31 @@ function App() {
                       setWechatLoginError(null)
                       try {
                         const result = await invoke<string>('run_wechat_login')
-                        console.log('微信登录返回:', result) // 调试日志
-                        if (result.startsWith('https://')) {
+                        console.log('微信登录返回:', result, typeof result)
+                        
+                        // 类型检查
+                        if (typeof result !== 'string') {
+                          setWechatLoginError('返回数据格式错误: ' + JSON.stringify(result))
+                          return
+                        }
+                        
+                        if (result && result.startsWith('https://')) {
                           setPluginConfigs({...pluginConfigs, wechat: {...pluginConfigs.wechat, qrUrl: result}})
                           setWechatLoginError(null)
-                        } else {
+                        } else if (result) {
                           // 返回了非URL内容，显示为错误
                           setWechatLoginError(result)
+                        } else {
+                          setWechatLoginError('返回内容为空')
                         }
                       } catch (err: any) {
                         console.error('微信登录异常:', err)
-                        setWechatLoginError(String(err))
+                        // 处理错误对象
+                        const errMsg = err?.message || err?.toString() || '未知错误'
+                        setWechatLoginError(errMsg)
+                      } finally {
+                        setWechatLoginLoading(false)
                       }
-                      setWechatLoginLoading(false)
                     }}
                     disabled={wechatLoginLoading}
                     className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
