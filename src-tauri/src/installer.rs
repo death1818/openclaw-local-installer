@@ -2496,7 +2496,7 @@ pub async fn run_wechat_login() -> Result<String, String> {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         
-        // 先尝试在 Docker 容器内执行（Docker模式优先）
+        // 检测是否是 Docker 模式
         let docker_check = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
             .args(&["-NoProfile", "-Command", "docker ps --filter name=openclaw-yuanhuiwang --format '{{.Names}}'"])
             .creation_flags(CREATE_NO_WINDOW)
@@ -2511,46 +2511,55 @@ pub async fn run_wechat_login() -> Result<String, String> {
         };
         
         if docker_mode {
-            // Docker 模式：在容器内执行命令
-            let ps_cmd = "$job = Start-Job -ScriptBlock { docker exec openclaw-yuanhuiwang npx openclaw channels login --channel openclaw-weixin 2>&1 }; if (Wait-Job $job -Timeout 30) { Receive-Job $job } else { Stop-Job $job; Write-Host 'ERROR_TIMEOUT' }; Remove-Job $job";
+            // Docker 模式：在容器内执行命令（使用tokio超时）
+            let exec_result = tokio::time::timeout(
+                std::time::Duration::from_secs(30),
+                async {
+                    Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                        .args(&["-NoProfile", "-Command", "docker exec openclaw-yuanhuiwang npx openclaw channels login --channel openclaw-weixin 2>&1"])
+                        .creation_flags(CREATE_NO_WINDOW)
+                        .output()
+                }
+            ).await;
             
-            let result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                .args(&["-NoProfile", "-Command", ps_cmd])
+            match exec_result {
+                Ok(result) => extract_qr_from_output(result),
+                Err(_) => Err("获取二维码超时（30秒）\n\n可能原因：\n1. 容器内命令执行慢\n2. 网络问题\n\n建议：在终端执行 docker exec openclaw-yuanhuiwang npx openclaw channels login --channel openclaw-weixin".to_string()),
+            }
+        } else {
+            // 非 Docker 模式
+            let check = Command::new("where")
+                .args(&["openclaw"])
                 .creation_flags(CREATE_NO_WINDOW)
                 .output();
             
-            return extract_qr_from_output(result);
+            let openclaw_exists = match check {
+                Ok(o) => o.status.success(),
+                Err(_) => false,
+            };
+            
+            let cmd_str = if openclaw_exists {
+                "openclaw channels login --channel openclaw-weixin 2>&1"
+            } else {
+                "npx -y openclaw channels login --channel openclaw-weixin 2>&1"
+            };
+            
+            // 使用 tokio 超时
+            let exec_result = tokio::time::timeout(
+                std::time::Duration::from_secs(30),
+                async {
+                    Command::new("C:\\Windows\\System32\\cmd.exe")
+                        .args(&["/c", cmd_str])
+                        .creation_flags(CREATE_NO_WINDOW)
+                        .output()
+                }
+            ).await;
+            
+            match exec_result {
+                Ok(result) => extract_qr_from_output(result),
+                Err(_) => Err("获取二维码超时（30秒）\n\n可能原因：\n1. npm 包下载慢\n2. 网络问题\n\n建议：在终端执行 openclaw channels login --channel openclaw-weixin".to_string()),
+            }
         }
-        
-        // 非 Docker 模式：检查 openclaw 是否在主机安装
-        let check = Command::new("where")
-            .args(&["openclaw"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output();
-        
-        let openclaw_exists = match check {
-            Ok(o) => o.status.success(),
-            Err(_) => false,
-        };
-        
-        // 使用 PowerShell Job 实现超时（30秒），避免命令卡住
-        let cmd_str = if openclaw_exists {
-            "openclaw channels login --channel openclaw-weixin 2>&1"
-        } else {
-            "npx -y openclaw channels login --channel openclaw-weixin 2>&1"
-        };
-        
-        let ps_cmd = format!(
-            "$job = Start-Job -ScriptBlock {{ {} }}; if (Wait-Job $job -Timeout 30) {{ Receive-Job $job }} else {{ Stop-Job $job; Write-Host 'ERROR_TIMEOUT' }}; Remove-Job $job",
-            cmd_str
-        );
-        
-        let result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", &ps_cmd])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output();
-        
-        extract_qr_from_output(result)
     }
     
     #[cfg(not(target_os = "windows"))]

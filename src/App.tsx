@@ -258,6 +258,7 @@ function App() {
   
   // 微信二维码加载状态
   const [wechatLoginLoading, setWechatLoginLoading] = useState(false)
+  const [wechatLoginError, setWechatLoginError] = useState<string | null>(null)
   
   // 预设训练数据 - 丰富知识点
   const trainingPresets = [
@@ -3252,6 +3253,12 @@ function App() {
                 </div>
                 <p className="text-sm text-gray-500 mb-3">点击下方按钮获取二维码，用微信扫码登录</p>
                 <div className="flex flex-col items-center gap-3">
+                  {/* 微信登录错误信息 */}
+                  {wechatLoginError && (
+                    <div className="w-full p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-600 dark:text-red-400 whitespace-pre-wrap">
+                      {wechatLoginError}
+                    </div>
+                  )}
                   {pluginConfigs.wechat.qrUrl ? (
                     <div className="flex flex-col items-center gap-2">
                       <canvas ref={async (canvas) => {
@@ -3269,16 +3276,20 @@ function App() {
                   <button
                     onClick={async () => {
                       setWechatLoginLoading(true)
-                      setError('')
+                      setWechatLoginError(null)
                       try {
                         const result = await invoke<string>('run_wechat_login')
+                        console.log('微信登录返回:', result) // 调试日志
                         if (result.startsWith('https://')) {
                           setPluginConfigs({...pluginConfigs, wechat: {...pluginConfigs.wechat, qrUrl: result}})
+                          setWechatLoginError(null)
                         } else {
-                          setError(result)  // 显示详细的错误信息
+                          // 返回了非URL内容，显示为错误
+                          setWechatLoginError(result)
                         }
                       } catch (err: any) {
-                        setError(String(err))  // 显示详细的错误信息
+                        console.error('微信登录异常:', err)
+                        setWechatLoginError(String(err))
                       }
                       setWechatLoginLoading(false)
                     }}
