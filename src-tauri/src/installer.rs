@@ -2496,13 +2496,13 @@ pub async fn run_wechat_login() -> Result<String, String> {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         
-        // 检测是否是 Docker 模式
+        // 检测 Docker 容器是否正在运行（不是仅存在）
         let docker_check = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", "docker ps --filter name=openclaw-yuanhuiwang --format '{{.Names}}'"])
+            .args(&["-NoProfile", "-Command", "docker ps --filter name=openclaw-yuanhuiwang --filter status=running --format '{{.Names}}'"])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         
-        let docker_mode = match docker_check {
+        let docker_container_running = match docker_check {
             Ok(output) => {
                 let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 result.contains("openclaw-yuanhuiwang")
@@ -2510,8 +2510,8 @@ pub async fn run_wechat_login() -> Result<String, String> {
             Err(_) => false,
         };
         
-        if docker_mode {
-            // Docker 模式：在容器内执行命令（使用tokio超时）
+        if docker_container_running {
+            // Docker 容器正在运行：在容器内执行命令
             let exec_result = tokio::time::timeout(
                 std::time::Duration::from_secs(30),
                 async {
@@ -2527,7 +2527,23 @@ pub async fn run_wechat_login() -> Result<String, String> {
                 Err(_) => Err("获取二维码超时（30秒）\n\n可能原因：\n1. 容器内命令执行慢\n2. 网络问题\n\n建议：在终端执行 docker exec openclaw-yuanhuiwang npx openclaw channels login --channel openclaw-weixin".to_string()),
             }
         } else {
-            // 非 Docker 模式
+            // Docker 容器未运行，检查是否需要提示用户
+            let container_exists = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                .args(&["-NoProfile", "-Command", "docker ps -a --filter name=openclaw-yuanhuiwang --format '{{.Status}}'"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
+            
+            let container_status = match container_exists {
+                Ok(output) => String::from_utf8_lossy(&output.stdout).trim().to_string(),
+                Err(_) => String::new(),
+            };
+            
+            if !container_status.is_empty() {
+                // 容器存在但未运行
+                return Err(format!("Docker 容器未运行（状态: {}）\n\n请先启动容器：\n1. 点击「Docker 一键部署」按钮重新部署\n2. 或在终端执行：docker start openclaw-yuanhuiwang", container_status));
+            }
+            
+            // 非 Docker 模式：在主机执行
             let check = Command::new("where")
                 .args(&["openclaw"])
                 .creation_flags(CREATE_NO_WINDOW)
