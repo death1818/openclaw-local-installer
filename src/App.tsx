@@ -1115,16 +1115,17 @@ function App() {
       console.log('Docker 模式，检测容器状态...')
       setDockerMode(true)
       
-      const checkStatus = async () => {
+      interface DockerStatus {
+        container_running: boolean
+        gateway_ready: boolean
+        ollama_connected: boolean
+        logs: string | null
+        error: string | null
+      }
+      
+      // 单次检测状态
+      const checkStatus = async (): Promise<'ready' | 'starting' | 'stopped' | 'error'> => {
         try {
-          interface DockerStatus {
-            container_running: boolean
-            gateway_ready: boolean
-            ollama_connected: boolean
-            logs: string | null
-            error: string | null
-          }
-          
           const status = await invoke<DockerStatus>('check_docker_container_status')
           console.log('Docker 容器状态:', status)
           
@@ -1139,10 +1140,8 @@ function App() {
             setDockerMode(false)
             return 'stopped'
           } else {
-            // 容器运行但 Gateway 未就绪，显示启动中
+            // 容器运行但 Gateway 未就绪
             console.log('容器运行但 Gateway 未就绪')
-            setGatewayStatus('starting')
-            setStartupProgress(5)
             return 'starting'
           }
         } catch (e) {
@@ -1154,8 +1153,50 @@ function App() {
         }
       }
       
-      // 检测一次
-      checkStatus()
+      // 带轮询的状态检测（最多等待60秒）
+      const checkWithPolling = async () => {
+        setGatewayStatus('starting')
+        setStartupProgress(5)
+        
+        const maxRetries = 20  // 最多检测20次
+        const retryInterval = 3000  // 每3秒检测一次
+        
+        for (let i = 0; i < maxRetries; i++) {
+          console.log(`Gateway 状态检测 ${i + 1}/${maxRetries}`)
+          
+          // 更新进度（5% 到 90%）
+          const progress = Math.min(90, 5 + (i * 85 / maxRetries))
+          setStartupProgress(progress)
+          
+          const result = await checkStatus()
+          
+          if (result === 'ready') {
+            return  // 已就绪，退出
+          } else if (result === 'stopped') {
+            setGatewayStatus('stopped')
+            setError('Docker 容器未运行，请点击「Docker 一键部署」按钮重新部署')
+            return
+          } else if (result === 'error') {
+            setGatewayStatus('error')
+            setError('检测 Docker 容器状态失败，请检查 Docker 是否正常运行')
+            return
+          }
+          
+          // starting 状态，继续等待
+          if (i < maxRetries - 1) {
+            await new Promise(resolve => setTimeout(resolve, retryInterval))
+          }
+        }
+        
+        // 超时处理
+        console.log('Gateway 启动超时')
+        setGatewayStatus('error')
+        setStartupProgress(0)
+        setError('Gateway 服务启动超时（等待60秒）\n\n可能原因：\n1. 容器正在下载依赖，请稍等片刻后重试\n2. 端口18789被占用\n3. Docker资源不足\n\n建议：点击」Docker 一键部署」按钮重新部署')
+      }
+      
+      // 开始轮询检测
+      checkWithPolling()
     } else {
       // 非 Docker 模式，默认显示已停止
       console.log('非 Docker 模式，等待用户操作')

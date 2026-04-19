@@ -2317,17 +2317,37 @@ pub struct DockerContainerStatus {
 }
 
 /// 检查 Docker 容器状态（用于 Docker 模式下的启动检测）
+/// 同步执行Docker命令（带超时）
+#[cfg(target_os = "windows")]
+fn run_docker_command_with_timeout(cmd_str: &str, timeout_secs: u64) -> Result<std::process::Output, String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    
+    // 使用 PowerShell 的 -Command 带超时逻辑
+    let full_cmd = format!(
+        "$job = Start-Job -ScriptBlock {{ {} }}; Wait-Job $job -Timeout {}; Receive-Job $job; Remove-Job $job",
+        cmd_str, timeout_secs
+    );
+    
+    let result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+        .args(&["-NoProfile", "-Command", &full_cmd])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+    
+    result.map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 #[cfg(target_os = "windows")]
 pub async fn check_docker_container_status() -> Result<DockerContainerStatus, String> {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x08000000;
     
-    // 1. 检查容器是否运行（使用 docker ps -a 检查包括停止的容器）
-    let container_check = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-        .args(&["-NoProfile", "-Command", "docker ps -a --filter name=openclaw-yuanhuiwang --format '{{.Status}}'"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output();
+    // 1. 检查容器是否运行（使用10秒超时）
+    let container_check = run_docker_command_with_timeout(
+        "docker ps -a --filter name=openclaw-yuanhuiwang --format '{{.Status}}'", 
+        10
+    );
     
     let (container_running, container_status) = match container_check {
         Ok(output) => {
@@ -2348,11 +2368,11 @@ pub async fn check_docker_container_status() -> Result<DockerContainerStatus, St
     };
     
     if !container_running {
-        // 容器未运行，尝试获取退出前的日志
-        let log_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", "docker logs openclaw-yuanhuiwang 2>&1 --tail 50"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output();
+        // 容器未运行，尝试获取退出前的日志（5秒超时）
+        let log_result = run_docker_command_with_timeout(
+            "docker logs openclaw-yuanhuiwang 2>&1 --tail 50",
+            5
+        );
         
         let logs = match log_result {
             Ok(output) => {
@@ -2377,12 +2397,12 @@ pub async fn check_docker_container_status() -> Result<DockerContainerStatus, St
     // 3. 检查 Ollama 连接
     let ollama_connected = check_ollama_service().await;
     
-    // 4. 如果 Gateway 没就绪，获取容器日志（包括 stderr）
+    // 4. 如果 Gateway 没就绪，获取容器日志（5秒超时）
     let logs = if !gateway_ready {
-        let log_result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", "docker logs openclaw-yuanhuiwang 2>&1 --tail 50"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output();
+        let log_result = run_docker_command_with_timeout(
+            "docker logs openclaw-yuanhuiwang 2>&1 --tail 50",
+            5
+        );
         
         match log_result {
             Ok(output) => {
