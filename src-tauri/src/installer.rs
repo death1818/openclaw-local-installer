@@ -2521,7 +2521,7 @@ pub async fn run_wechat_login() -> Result<String, String> {
             // Docker 容器正在运行：在容器内执行命令
             let exec_cmd = format!("docker exec {} npx openclaw channels login --channel openclaw-weixin 2>&1", container_name);
             let exec_result = tokio::time::timeout(
-                std::time::Duration::from_secs(30),
+                std::time::Duration::from_secs(60),  // 增加到60秒，npx首次下载需要时间
                 async {
                     Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
                         .args(&["-NoProfile", "-Command", &exec_cmd])
@@ -2570,7 +2570,7 @@ pub async fn run_wechat_login() -> Result<String, String> {
             
             // 使用 tokio 超时
             let exec_result = tokio::time::timeout(
-                std::time::Duration::from_secs(30),
+                std::time::Duration::from_secs(60),  // 增加到60秒
                 async {
                     Command::new("C:\\Windows\\System32\\cmd.exe")
                         .args(&["/c", cmd_str])
@@ -2603,6 +2603,17 @@ fn extract_qr_from_output(result: Result<std::process::Output, std::io::Error>) 
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
             let full = format!("{}\n{}", stdout, stderr);
             
+            // 检查命令是否执行成功
+            if !output.status.success() {
+                let exit_code = output.status.code().unwrap_or(-1);
+                let err_msg = if full.trim().is_empty() {
+                    format!("命令执行失败（退出码: {}）\nstdout为空，stderr为空", exit_code)
+                } else {
+                    format!("命令执行失败（退出码: {}）\n{}", exit_code, &full[..500.min(full.len())])
+                };
+                return Err(err_msg);
+            }
+            
             // 检查超时
             if full.contains("ERROR_TIMEOUT") {
                 return Err("获取二维码超时（30秒）\n\n可能原因：\n1. 网络连接不畅\n2. npm 包下载慢\n\n建议：\n- 检查网络连接\n- 手动在终端执行：openclaw channels login --channel openclaw-weixin".to_string());
@@ -2630,9 +2641,16 @@ fn extract_qr_from_output(result: Result<std::process::Output, std::io::Error>) 
             if full.contains("not found") || full.contains("command not found") {
                 return Err("未找到 openclaw 命令\n\n请先安装 Node.js，然后重新点击按钮（会自动通过 npx 下载）".to_string());
             }
+            if full.contains("Unable to find image") || full.contains("No such container") {
+                return Err("Docker容器或镜像问题\n\n请重新点击「Docker一键部署」".to_string());
+            }
             
-            // 如果没找到 URL，返回错误信息
-            Err(format!("未找到二维码链接\n\n输出内容:\n{}", &full[..500.min(full.len())]))
+            // 如果没找到 URL，返回错误信息（包含完整输出）
+            if full.trim().is_empty() {
+                return Err("命令执行成功但输出为空\n\n可能原因：\n1. 容器内未安装openclaw\n2. npx需要先下载依赖\n\n建议：在终端手动执行测试\ndocker exec <容器名> npx openclaw channels login --channel openclaw-weixin".to_string());
+            }
+            
+            Err(format!("未找到二维码链接\n\n输出内容:\n{}", &full[..800.min(full.len())]))
         }
         Err(e) => Err(format!("执行失败: {}\n\n请确保已安装 Node.js", e))
     }

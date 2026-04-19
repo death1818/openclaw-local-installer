@@ -3311,7 +3311,7 @@ function App() {
                     {wechatLoginLoading ? (
                       <>
                         <span className="animate-spin">⏳</span>
-                        获取中...（最长30秒）
+                        获取中...（最长60秒）
                       </>
                     ) : (
                       <>
