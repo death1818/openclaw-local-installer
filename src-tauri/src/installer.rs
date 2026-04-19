@@ -2496,20 +2496,20 @@ pub async fn run_wechat_login() -> Result<String, String> {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         
-        // 检测 Docker 容器是否正在运行（docker ps 默认只显示运行中的容器）
-        // 使用模糊匹配，只要容器名包含 openclaw 就认为是目标容器
-        let docker_check = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-            .args(&["-NoProfile", "-Command", "docker ps --format '{{.Names}}' | Select-String -Pattern 'openclaw' -SimpleMatch"])
+        // 检测 Docker 容器是否正在运行，获取实际容器名
+        // docker ps 默认只显示运行中的容器，取第一个容器
+        let docker_check = Command::new("C:\\Windows\\System32\\cmd.exe")
+            .args(&["/c", "docker ps --format {{.Names}}"])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         
         let (docker_container_running, container_name) = match docker_check {
             Ok(output) => {
                 let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if result.contains("openclaw") {
-                    // 提取容器名（取第一个匹配）
-                    let name = result.lines().next().unwrap_or("").trim().to_string();
-                    (true, if name.is_empty() { "openclaw-yuanhuiwang".to_string() } else { name })
+                if !result.is_empty() {
+                    // 取第一个容器名（不管叫什么，只要是运行中的）
+                    let name = result.lines().next().unwrap_or("openclaw-yuanhuiwang").trim().to_string();
+                    (true, name)
                 } else {
                     (false, String::new())
                 }
