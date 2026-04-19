@@ -2496,30 +2496,56 @@ pub async fn run_wechat_login() -> Result<String, String> {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         
-        // 检测 Docker 容器是否正在运行，获取实际容器名
-        // docker ps 默认只显示运行中的容器，取第一个容器
-        let docker_check = Command::new("C:\\Windows\\System32\\cmd.exe")
-            .args(&["/c", "docker ps --format {{.Names}}"])
+        // 策略：优先在主机执行，因为主机直接执行更可靠
+        // 只有当主机没有Node.js时才尝试Docker容器
+        
+        // 1. 先检查主机是否有 Node.js
+        let node_check = Command::new("C:\\Windows\\System32\\cmd.exe")
+            .args(&["/c", "node --version"])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         
-        let (docker_container_running, container_name) = match docker_check {
-            Ok(output) => {
-                let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if !result.is_empty() {
-                    // 取第一个容器名（不管叫什么，只要是运行中的）
-                    let name = result.lines().next().unwrap_or("openclaw-yuanhuiwang").trim().to_string();
-                    (true, name)
-                } else {
-                    (false, String::new())
-                }
-            }
-            Err(_) => (false, String::new()),
+        let host_has_node = match node_check {
+            Ok(output) => output.status.success(),
+            Err(_) => false,
         };
         
-        if docker_container_running {
-            // Docker 容器正在运行：在容器内执行命令
-            // 使用 cmd.exe 而非 PowerShell，因为 PowerShell 无法正确捕获 docker exec 的输出
+        if host_has_node {
+            // 主机有 Node.js，直接在主机执行（最可靠）
+            let exec_result = tokio::time::timeout(
+                std::time::Duration::from_secs(60),
+                async {
+                    Command::new("C:\\Windows\\System32\\cmd.exe")
+                        .args(&["/c", "npx openclaw channels login --channel openclaw-weixin 2>&1"])
+                        .creation_flags(CREATE_NO_WINDOW)
+                        .output()
+                }
+            ).await;
+            
+            match exec_result {
+                Ok(result) => extract_qr_from_output(result),
+                Err(_) => Err("获取二维码超时（60秒）\n\n请在cmd.exe中手动执行测试：\nnpx openclaw channels login --channel openclaw-weixin".to_string()),
+            }
+        } else {
+            // 主机没有 Node.js，尝试 Docker 容器
+            let docker_check = Command::new("C:\\Windows\\System32\\cmd.exe")
+                .args(&["/c", "docker ps --format {{.Names}}"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
+            
+            let container_name = match docker_check {
+                Ok(output) => {
+                    let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if !result.is_empty() {
+                        result.lines().next().unwrap_or("openclaw-yuanhuiwang").trim().to_string()
+                    } else {
+                        return Err("主机没有安装Node.js，且没有运行的Docker容器\n\n请先安装Node.js：https://nodejs.org".to_string());
+                    }
+                }
+                Err(_) => return Err("无法检测Docker状态，请确认Docker Desktop是否运行".to_string()),
+            };
+            
+            // 在容器内执行
             let exec_cmd = format!("docker exec {} npx openclaw channels login --channel openclaw-weixin 2>&1", container_name);
             let exec_result = tokio::time::timeout(
                 std::time::Duration::from_secs(60),
@@ -2533,58 +2559,10 @@ pub async fn run_wechat_login() -> Result<String, String> {
             
             match exec_result {
                 Ok(result) => extract_qr_from_output(result),
-                Err(_) => Err(format!("获取二维码超时（60秒）\n\n可能原因：\n1. 容器内命令执行慢\n2. 网络问题\n\n建议：在终端执行 docker exec {} npx openclaw channels login --channel openclaw-weixin", container_name)),
-            }
-        } else {
-            // Docker 容器未运行，检查是否需要提示用户
-            let container_exists = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-                .args(&["-NoProfile", "-Command", "docker ps -a --filter name=openclaw-yuanhuiwang --format '{{.Status}}'"])
-                .creation_flags(CREATE_NO_WINDOW)
-                .output();
-            
-            let container_status = match container_exists {
-                Ok(output) => String::from_utf8_lossy(&output.stdout).trim().to_string(),
-                Err(_) => String::new(),
-            };
-            
-            if !container_status.is_empty() {
-                // 容器存在但未运行
-                return Err(format!("Docker 容器未运行（状态: {}）\n\n请先启动容器：\n1. 点击「Docker 一键部署」按钮重新部署\n2. 或在终端执行：docker start openclaw-yuanhuiwang", container_status));
-            }
-            
-            // 非 Docker 模式：在主机执行
-            let check = Command::new("where")
-                .args(&["openclaw"])
-                .creation_flags(CREATE_NO_WINDOW)
-                .output();
-            
-            let openclaw_exists = match check {
-                Ok(o) => o.status.success(),
-                Err(_) => false,
-            };
-            
-            let cmd_str = if openclaw_exists {
-                "openclaw channels login --channel openclaw-weixin 2>&1"
-            } else {
-                "npx -y openclaw channels login --channel openclaw-weixin 2>&1"
-            };
-            
-            // 使用 tokio 超时
-            let exec_result = tokio::time::timeout(
-                std::time::Duration::from_secs(60),  // 增加到60秒
-                async {
-                    Command::new("C:\\Windows\\System32\\cmd.exe")
-                        .args(&["/c", cmd_str])
-                        .creation_flags(CREATE_NO_WINDOW)
-                        .output()
-                }
-            ).await;
-            
-            match exec_result {
-                Ok(result) => extract_qr_from_output(result),
-                Err(_) => Err("获取二维码超时（60秒）\n\n可能原因：\n1. npm 包下载慢\n2. 网络问题\n\n建议：在终端执行 openclaw channels login --channel openclaw-weixin".to_string()),
+                Err(_) => Err(format!("获取二维码超时（60秒）\n\n请在cmd.exe中手动执行：\ndocker exec {} npx openclaw channels login --channel openclaw-weixin", container_name)),
             }
         }
+    }
     }
     
     #[cfg(not(target_os = "windows"))]
