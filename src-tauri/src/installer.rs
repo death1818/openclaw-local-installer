@@ -2507,14 +2507,20 @@ pub async fn run_wechat_login() -> Result<String, String> {
             Err(_) => false,
         };
         
+        // 使用 PowerShell Job 实现超时（30秒），避免命令卡住
         let cmd_str = if openclaw_exists {
             "openclaw channels login --channel openclaw-weixin 2>&1"
         } else {
             "npx -y openclaw channels login --channel openclaw-weixin 2>&1"
         };
         
-        let result = Command::new("cmd")
-            .args(&["/C", cmd_str])
+        let ps_cmd = format!(
+            "$job = Start-Job -ScriptBlock {{ {} }}; if (Wait-Job $job -Timeout 30) {{ Receive-Job $job }} else {{ Stop-Job $job; Write-Host 'ERROR_TIMEOUT' }}; Remove-Job $job",
+            cmd_str
+        );
+        
+        let result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-NoProfile", "-Command", &ps_cmd])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         
@@ -2538,6 +2544,11 @@ fn extract_qr_from_output(result: Result<std::process::Output, std::io::Error>) 
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
             let full = format!("{}\n{}", stdout, stderr);
             
+            // 检查超时
+            if full.contains("ERROR_TIMEOUT") {
+                return Err("获取二维码超时（30秒）\n\n可能原因：\n1. 网络连接不畅\n2. npm 包下载慢\n\n建议：\n- 检查网络连接\n- 手动在终端执行：openclaw channels login --channel openclaw-weixin".to_string());
+            }
+            
             // 提取二维码 URL
             for line in full.lines() {
                 let trimmed = line.trim();
@@ -2547,8 +2558,22 @@ fn extract_qr_from_output(result: Result<std::process::Output, std::io::Error>) 
                 }
             }
             
+            // 检查常见错误
+            if full.contains("ENOTFOUND") || full.contains("getaddrinfo") {
+                return Err("网络连接失败，无法访问微信服务器\n\n请检查：\n1. 网络连接是否正常\n2. 是否需要VPN/代理\n\n可以尝试在浏览器访问：https://open.weixin.qq.com".to_string());
+            }
+            if full.contains("certificate") || full.contains("SSL") || full.contains("TLS") {
+                return Err("SSL证书错误\n\n请检查系统时间是否正确，或尝试更新 Node.js".to_string());
+            }
+            if full.contains("EACCES") || full.contains("permission denied") {
+                return Err("权限不足\n\n请以管理员身份运行安装器".to_string());
+            }
+            if full.contains("not found") || full.contains("command not found") {
+                return Err("未找到 openclaw 命令\n\n请先安装 Node.js，然后重新点击按钮（会自动通过 npx 下载）".to_string());
+            }
+            
             // 如果没找到 URL，返回错误信息
-            Err(format!("未找到二维码链接。\n\n输出内容:\n{}", &full[..500.min(full.len())]))
+            Err(format!("未找到二维码链接\n\n输出内容:\n{}", &full[..500.min(full.len())]))
         }
         Err(e) => Err(format!("执行失败: {}\n\n请确保已安装 Node.js", e))
     }

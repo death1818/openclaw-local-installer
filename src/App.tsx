@@ -3270,10 +3270,10 @@ function App() {
                         if (result.startsWith('https://')) {
                           setPluginConfigs({...pluginConfigs, wechat: {...pluginConfigs.wechat, qrUrl: result}})
                         } else {
-                          alert(result)
+                          setError(result)  // 显示详细的错误信息
                         }
                       } catch (err: any) {
-                        alert(err)
+                        setError(String(err))  // 显示详细的错误信息
                       }
                     }}
                     className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm"
