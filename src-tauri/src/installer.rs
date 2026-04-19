@@ -2496,7 +2496,33 @@ pub async fn run_wechat_login() -> Result<String, String> {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         
-        // 先检查 openclaw 是否安装
+        // 先尝试在 Docker 容器内执行（Docker模式优先）
+        let docker_check = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+            .args(&["-NoProfile", "-Command", "docker ps --filter name=openclaw-yuanhuiwang --format '{{.Names}}'"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        
+        let docker_mode = match docker_check {
+            Ok(output) => {
+                let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                result.contains("openclaw-yuanhuiwang")
+            }
+            Err(_) => false,
+        };
+        
+        if docker_mode {
+            // Docker 模式：在容器内执行命令
+            let ps_cmd = "$job = Start-Job -ScriptBlock { docker exec openclaw-yuanhuiwang npx openclaw channels login --channel openclaw-weixin 2>&1 }; if (Wait-Job $job -Timeout 30) { Receive-Job $job } else { Stop-Job $job; Write-Host 'ERROR_TIMEOUT' }; Remove-Job $job";
+            
+            let result = Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+                .args(&["-NoProfile", "-Command", ps_cmd])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
+            
+            return extract_qr_from_output(result);
+        }
+        
+        // 非 Docker 模式：检查 openclaw 是否在主机安装
         let check = Command::new("where")
             .args(&["openclaw"])
             .creation_flags(CREATE_NO_WINDOW)
@@ -2656,10 +2682,31 @@ pub async fn send_chat_message(
         if res.status().is_success() {
             if let Ok(json) = res.json::<serde_json::Value>().await {
                 if let Some(models) = json.get("models").and_then(|m| m.as_array()) {
-                    // 检查请求的模型是否存在
+                    // 检查请求的模型是否存在（支持 phi3.5 和 phi3.5:latest 匹配）
                     let model_exists = models.iter().any(|m| {
-                        m.get("name").and_then(|n| n.as_str()).map(|n| n == model).unwrap_or(false)
+                        m.get("name").and_then(|n| n.as_str()).map(|n| {
+                            // 精确匹配
+                            n == model || 
+                            // 去掉 :latest 后匹配
+                            n.strip_suffix(":latest").map(|s| s == model).unwrap_or(false) ||
+                            // 以模型名开头
+                            n.starts_with(&format!("{}:", model))
+                        }).unwrap_or(false)
                     });
+                    
+                    // 找到匹配的模型，使用实际名称
+                    if model_exists {
+                        for m in models {
+                            if let Some(name) = m.get("name").and_then(|n| n.as_str()) {
+                                if name == model || 
+                                   name.strip_suffix(":latest").map(|s| s == model).unwrap_or(false) ||
+                                   name.starts_with(&format!("{}:", model)) {
+                                    actual_model = name.to_string();
+                                    break;
+                                }
+                            }
+                        }
+                    }
                     
                     // 如果不存在，用第一个可用模型
                     if !model_exists && models.first().is_some() {

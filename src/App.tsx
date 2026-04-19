@@ -256,6 +256,9 @@ function App() {
   const [trainingLog, setTrainingLog] = useState<string[]>([])
   const [trainingActive, setTrainingActive] = useState(false)
   
+  // 微信二维码加载状态
+  const [wechatLoginLoading, setWechatLoginLoading] = useState(false)
+  
   // 预设训练数据 - 丰富知识点
   const trainingPresets = [
     {
@@ -3265,6 +3268,8 @@ function App() {
                   ) : null}
                   <button
                     onClick={async () => {
+                      setWechatLoginLoading(true)
+                      setError('')
                       try {
                         const result = await invoke<string>('run_wechat_login')
                         if (result.startsWith('https://')) {
@@ -3275,10 +3280,21 @@ function App() {
                       } catch (err: any) {
                         setError(String(err))  // 显示详细的错误信息
                       }
+                      setWechatLoginLoading(false)
                     }}
-                    className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm"
+                    disabled={wechatLoginLoading}
+                    className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
-                    📱 获取登录二维码
+                    {wechatLoginLoading ? (
+                      <>
+                        <span className="animate-spin">⏳</span>
+                        获取中...（最长30秒）
+                      </>
+                    ) : (
+                      <>
+                        📱 获取登录二维码
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
