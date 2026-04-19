@@ -256,10 +256,6 @@ function App() {
   const [trainingLog, setTrainingLog] = useState<string[]>([])
   const [trainingActive, setTrainingActive] = useState(false)
   
-  // 微信二维码加载状态
-  const [wechatLoginLoading, setWechatLoginLoading] = useState(false)
-  const [wechatLoginError, setWechatLoginError] = useState<string | null>(null)
-  
   // 预设训练数据 - 丰富知识点
   const trainingPresets = [
     {
@@ -3251,74 +3247,22 @@ function App() {
                     启用
                   </label>
                 </div>
-                <p className="text-sm text-gray-500 mb-3">点击下方按钮获取二维码，用微信扫码登录</p>
+                <p className="text-sm text-gray-500 mb-3">在终端执行以下命令获取二维码登录：</p>
                 <div className="flex flex-col items-center gap-3">
-                  {/* 微信登录错误信息 */}
-                  {wechatLoginError && (
-                    <div className="w-full p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-600 dark:text-red-400 whitespace-pre-wrap">
-                      {wechatLoginError}
+                  {/* 手动操作指引 */}
+                  <div className="w-full p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg text-sm">
+                    <p className="font-medium mb-2">📱 操作步骤：</p>
+                    <ol className="list-decimal list-inside space-y-1 text-gray-600 dark:text-gray-400">
+                      <li>打开 <strong>cmd</strong> 或 <strong>PowerShell</strong></li>
+                      <li>执行命令：</li>
+                    </ol>
+                    <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-900 rounded font-mono text-xs break-all">
+                      npx openclaw channels login --channel openclaw-weixin
                     </div>
-                  )}
-                  {pluginConfigs.wechat.qrUrl ? (
-                    <div className="flex flex-col items-center gap-2">
-                      <canvas ref={async (canvas) => {
-                        if (canvas && pluginConfigs.wechat.qrUrl) {
-                          try {
-                            const QRCode = (await import('qrcode')).default
-                            QRCode.toCanvas(canvas, pluginConfigs.wechat.qrUrl!, { width: 200, margin: 2, color: { dark: '#000', light: '#fff' } })
-                          } catch (e) { console.error('QR render error', e) }
-                        }
-                      }} />
-                      <p className="text-xs text-gray-400">用微信扫描此二维码登录</p>
-                      <a href={pluginConfigs.wechat.qrUrl} target="_blank" className="text-xs text-blue-500 hover:underline">二维码不显示？点击打开链接扫码</a>
-                    </div>
-                  ) : null}
-                  <button
-                    onClick={async () => {
-                      setWechatLoginLoading(true)
-                      setWechatLoginError(null)
-                      try {
-                        const result = await invoke<string>('run_wechat_login')
-                        console.log('微信登录返回:', result, typeof result)
-                        
-                        // 类型检查
-                        if (typeof result !== 'string') {
-                          setWechatLoginError('返回数据格式错误: ' + JSON.stringify(result))
-                          return
-                        }
-                        
-                        if (result && result.startsWith('https://')) {
-                          setPluginConfigs({...pluginConfigs, wechat: {...pluginConfigs.wechat, qrUrl: result}})
-                          setWechatLoginError(null)
-                        } else if (result) {
-                          // 返回了非URL内容，显示为错误
-                          setWechatLoginError(result)
-                        } else {
-                          setWechatLoginError('返回内容为空')
-                        }
-                      } catch (err: any) {
-                        console.error('微信登录异常:', err)
-                        // 处理错误对象
-                        const errMsg = err?.message || err?.toString() || '未知错误'
-                        setWechatLoginError(errMsg)
-                      } finally {
-                        setWechatLoginLoading(false)
-                      }
-                    }}
-                    disabled={wechatLoginLoading}
-                    className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  >
-                    {wechatLoginLoading ? (
-                      <>
-                        <span className="animate-spin">⏳</span>
-                        获取中...（最长60秒）
-                      </>
-                    ) : (
-                      <>
-                        📱 获取登录二维码
-                      </>
-                    )}
-                  </button>
+                    <ol start={3} className="list-decimal list-inside space-y-1 text-gray-600 dark:text-gray-400 mt-2">
+                      <li>用微信扫描终端中显示的二维码</li>
+                    </ol>
+                  </div>
                 </div>
               </div>
               
